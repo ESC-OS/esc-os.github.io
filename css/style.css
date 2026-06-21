@@ -910,50 +910,36 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
    DESKTOP SIDEBAR LAYOUT  ≥900px
    ===================================================== */
 @media (min-width: 900px) {
-  /* Body → 2-column grid: sidebar | content stack */
-  body {
-    display: grid;
-    grid-template-columns: 240px 1fr;
-    min-height: 100vh;
-    flex-direction: unset;
-    align-items: start;
-  }
-
-  /* Sidebar spans all rows so footer sits under content, not under sidebar */
+  /* Fixed sidebar — no body layout conflict */
   #navbar-root {
-    grid-column: 1;
-    grid-row: 1 / 999;
-    position: sticky;
-    top: 0;
+    position: fixed;
+    left: 0; top: 0;
+    width: 240px;
     height: 100vh;
+    z-index: 100;
     overflow-y: auto;
     overflow-x: hidden;
     scrollbar-width: none;
   }
   #navbar-root::-webkit-scrollbar { display: none; }
 
-  /* Content + footer in column 2 */
+  /* Push content right to clear the sidebar */
+  #app, #site-footer { margin-left: 240px; }
+
   #app {
-    grid-column: 2;
-    grid-row: 1;
     max-width: none;
     padding: 2rem 2.5rem;
-    flex: unset;
   }
-  #site-footer {
-    grid-column: 2;
-    margin-top: 0;
-  }
+
+  #site-footer { margin-top: 0; }
 
   /* Sidebar nav shell */
   .nav {
     height: 100vh;
-    box-shadow: 1px 0 0 rgba(0,0,0,.1);
-    position: sticky;
-    top: 0;
+    box-shadow: 1px 0 0 rgba(0,0,0,.12);
   }
 
-  /* Nav inner: vertical flex */
+  /* Nav inner: vertical flex column */
   .nav-inner {
     max-width: none;
     margin: 0;
@@ -1002,10 +988,9 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
     margin: .45rem 1.2rem;
   }
 
-  /* Admin links: same style, just slightly subdued */
   .nav-link-admin { opacity: 1; font-size: .855rem; }
 
-  /* Bottom user section */
+  /* Bottom: user info + logout */
   .nav-right {
     flex-direction: column;
     align-items: stretch;
@@ -1015,29 +1000,40 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
     flex-shrink: 0;
   }
 
-  /* Profile link: avatar + name row */
-  .nav-profile-link {
-    padding: .4rem .25rem;
-    border-radius: var(--radius-xs);
+  .nav-profile-link { padding: .4rem .25rem; }
+  .nav-profile-name {
+    display: block;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;
   }
-  .nav-profile-name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
 
-  /* Bell: icon + label row */
   .nav-bell {
     display: flex; align-items: center; gap: .55rem;
-    padding: .45rem .25rem; border-radius: var(--radius-xs);
-    color: rgba(255,255,255,.75);
+    padding: .45rem .25rem;
   }
-  .nav-bell:hover, .nav-bell.active { color: #fff; background: rgba(255,255,255,.12); }
   .nav-bell .nav-notif-dot { position: static; border: none; margin-left: auto; }
   .nav-bell-label { display: block; }
 
-  /* Logout: full width */
-  .nav-logout {
-    width: 100%;
-    text-align: center;
-    padding: .5rem .75rem;
+  .nav-logout { width: 100%; text-align: center; padding: .5rem .75rem; }
+
+  /* ── Content layout: use the full available width ── */
+
+  /* Project cards: 2 columns */
+  .project-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: 1rem;
   }
+
+  /* Dashboard greeting row: pin button to far right */
+  .dash-greeting-row { margin-bottom: 1.5rem; }
+  .dash-greeting     { font-size: 2.1rem; }
+
+  /* Items grid: more columns, larger cells */
+  .items-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+
+  /* Footer inner: restore full width */
+  .footer-inner { max-width: none; padding: 0 1rem; }
+  .footer-bottom { max-width: none; padding: 0 1rem; }
 }
 
 /* =====================================================
