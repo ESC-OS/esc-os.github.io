@@ -126,18 +126,20 @@ export function renderNavbar(user, unread = 0) {
           ` : ''}
         </div>
         <div class="nav-right">
+          <a href="/profile/" class="nav-profile-link${seg === '/profile' ? ' active' : ''}">
+            ${user.avatar_url
+              ? `<img src="${h(user.avatar_url)}" alt="${h(user.name)}" class="nav-avatar">`
+              : `<div class="nav-avatar-placeholder">${h(user.name.charAt(0).toUpperCase())}</div>`
+            }
+            <span class="nav-profile-name">${h(user.name)}</span>
+          </a>
           <a href="/notifications/" class="nav-bell${seg === '/notifications' ? ' active' : ''}" title="การแจ้งเตือน">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
               <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
             </svg>
             ${unread > 0 ? `<span class="nav-notif-dot">${unread > 99 ? '99+' : unread}</span>` : ''}
-          </a>
-          <a href="/profile/" title="${h(user.name)}" style="text-decoration:none;flex-shrink:0">
-            ${user.avatar_url
-              ? `<img src="${h(user.avatar_url)}" alt="${h(user.name)}" class="nav-avatar">`
-              : `<div class="nav-avatar-placeholder">${h(user.name.charAt(0).toUpperCase())}</div>`
-            }
+            <span class="nav-bell-label">การแจ้งเตือน</span>
           </a>
           <button class="nav-logout" id="nav-logout-btn">ออกจากระบบ</button>
         </div>

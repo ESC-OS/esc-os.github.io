@@ -894,6 +894,153 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .flow-hint strong { font-weight: 700; }
 
 /* =====================================================
+   PROFILE LINK (nav-right, works in both top & sidebar)
+   ===================================================== */
+.nav-profile-link {
+  display: inline-flex; align-items: center; gap: .5rem;
+  text-decoration: none; flex-shrink: 0; border-radius: var(--radius-xs);
+  transition: background var(--transition); padding: .2rem;
+}
+.nav-profile-link:hover { background: rgba(255,255,255,.12); text-decoration: none; }
+.nav-profile-link.active { background: rgba(255,255,255,.18); }
+.nav-profile-name { display: none; font-size: .82rem; font-weight: 600; color: rgba(255,255,255,.9); }
+.nav-bell-label   { display: none; font-size: .875rem; font-weight: 500; }
+
+/* =====================================================
+   DESKTOP SIDEBAR LAYOUT  ≥900px
+   ===================================================== */
+@media (min-width: 900px) {
+  /* Body → 2-column grid: sidebar | content stack */
+  body {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    min-height: 100vh;
+    flex-direction: unset;
+    align-items: start;
+  }
+
+  /* Sidebar spans all rows so footer sits under content, not under sidebar */
+  #navbar-root {
+    grid-column: 1;
+    grid-row: 1 / 999;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+  }
+  #navbar-root::-webkit-scrollbar { display: none; }
+
+  /* Content + footer in column 2 */
+  #app {
+    grid-column: 2;
+    grid-row: 1;
+    max-width: none;
+    padding: 2rem 2.5rem;
+    flex: unset;
+  }
+  #site-footer {
+    grid-column: 2;
+    margin-top: 0;
+  }
+
+  /* Sidebar nav shell */
+  .nav {
+    height: 100vh;
+    box-shadow: 1px 0 0 rgba(0,0,0,.1);
+    position: sticky;
+    top: 0;
+  }
+
+  /* Nav inner: vertical flex */
+  .nav-inner {
+    max-width: none;
+    margin: 0;
+    height: 100%;
+    padding: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+  }
+
+  /* Brand at top */
+  .nav-brand {
+    padding: 1.1rem 1.1rem 1rem;
+    border-bottom: 1px solid rgba(255,255,255,.12);
+    margin: 0;
+    flex-shrink: 0;
+  }
+  .nav-brand-name { display: block; }
+
+  /* Nav links: vertical list */
+  .nav-links {
+    flex-direction: column;
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: .5rem 0;
+    gap: 1px;
+    scrollbar-width: none;
+  }
+  .nav-links::-webkit-scrollbar { display: none; }
+
+  .nav-link {
+    display: flex; align-items: center;
+    padding: .6rem 1.2rem;
+    border-radius: 0;
+    border-left: 3px solid transparent;
+    font-size: .875rem;
+  }
+  .nav-link:hover  { border-left-color: rgba(255,255,255,.4); background: rgba(255,255,255,.1); }
+  .nav-link.active { border-left-color: rgba(255,255,255,.85); background: rgba(255,255,255,.18); font-weight: 700; }
+
+  /* Divider: horizontal rule */
+  .nav-divider {
+    display: block;
+    width: auto; height: 1px;
+    margin: .45rem 1.2rem;
+  }
+
+  /* Admin links: same style, just slightly subdued */
+  .nav-link-admin { opacity: 1; font-size: .855rem; }
+
+  /* Bottom user section */
+  .nav-right {
+    flex-direction: column;
+    align-items: stretch;
+    padding: .85rem 1rem;
+    border-top: 1px solid rgba(255,255,255,.12);
+    gap: .45rem;
+    flex-shrink: 0;
+  }
+
+  /* Profile link: avatar + name row */
+  .nav-profile-link {
+    padding: .4rem .25rem;
+    border-radius: var(--radius-xs);
+  }
+  .nav-profile-name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
+
+  /* Bell: icon + label row */
+  .nav-bell {
+    display: flex; align-items: center; gap: .55rem;
+    padding: .45rem .25rem; border-radius: var(--radius-xs);
+    color: rgba(255,255,255,.75);
+  }
+  .nav-bell:hover, .nav-bell.active { color: #fff; background: rgba(255,255,255,.12); }
+  .nav-bell .nav-notif-dot { position: static; border: none; margin-left: auto; }
+  .nav-bell-label { display: block; }
+
+  /* Logout: full width */
+  .nav-logout {
+    width: 100%;
+    text-align: center;
+    padding: .5rem .75rem;
+  }
+}
+
+/* =====================================================
    SEARCH INPUT
    ===================================================== */
 .search-input {
