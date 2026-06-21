@@ -30,7 +30,7 @@ async function init() {
             <div>
               <div class="project-card-name">${h(p.name)}</div>
               ${p.group ? `<div class="project-card-meta">กลุ่ม ${h(p.group)}${p.in_charge_person ? ` · ${h(p.in_charge_person)}` : ''}</div>` : p.in_charge_person ? `<div class="project-card-meta">ผู้รับผิดชอบ: ${h(p.in_charge_person)}</div>` : ''}
-              <div class="project-card-meta" style="margin-top:.2rem">เจ้าของ: ${h(p.owner_name)}</div>
+              <div class="project-card-meta" style="margin-top:.2rem">ผู้รับผิดชอบ: ${h(p.owner_name)}</div>
             </div>
             <div class="project-card-dates">
               <div>${formatDate(p.start_date)}</div>

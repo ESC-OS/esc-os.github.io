@@ -46,7 +46,7 @@ async function init() {
             ${project.group ? `<div class="info-row"><span class="info-label">กลุ่ม</span><span>${h(project.group)}</span></div>` : ''}
             ${project.in_charge_person ? `<div class="info-row"><span class="info-label">ผู้รับผิดชอบ</span><span>${h(project.in_charge_person)}</span></div>` : ''}
             ${project.description ? `<div class="info-row"><span class="info-label">คำอธิบาย</span><span>${h(project.description)}</span></div>` : ''}
-            <div class="info-row"><span class="info-label">เจ้าของ</span><span>${h(project.owner_name)}</span></div>
+            <div class="info-row"><span class="info-label">ผู้รับผิดชอบ</span><span>${h(project.owner_name)}</span></div>
             <div class="info-row"><span class="info-label">ช่วงเวลา</span>
               <span>${formatDate(project.start_date)} → ${formatDate(project.end_date)}</span>
             </div>
