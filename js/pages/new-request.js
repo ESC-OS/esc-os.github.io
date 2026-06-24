@@ -92,9 +92,9 @@ async function init() {
     const selectedId = e.target.value;
     const body = document.getElementById('form-body');
     body.innerHTML = renderForm(selectedId);
-    document.getElementById('project-select').addEventListener('change', onProjectChange);
+    document.getElementById('project-select')?.addEventListener('change', onProjectChange);
   }
-  document.getElementById('project-select').addEventListener('change', onProjectChange);
+  document.getElementById('project-select')?.addEventListener('change', onProjectChange);
 
   document.getElementById('req-form').addEventListener('submit', async (e) => {
     e.preventDefault();
