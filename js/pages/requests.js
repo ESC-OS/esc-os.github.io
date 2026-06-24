@@ -29,12 +29,15 @@ async function init() {
       <div class="table-wrap">
         <table class="data-table">
           <thead>
-            <tr><th>รหัส</th><th>โครงการ</th><th>สถานะ</th><th>วันที่รับ</th><th>วันที่คืน</th></tr>
+            <tr><th>คำขอ</th><th>โครงการ</th><th>สถานะ</th><th>วันที่รับ</th><th>วันที่คืน</th></tr>
           </thead>
           <tbody>
             ${requests.map(r => `
               <tr style="cursor:pointer" onclick="window.location.href='/request-detail/?id=${h(r.id)}'">
-                <td><span class="mono" style="color:var(--primary);font-weight:600">#${h(r.id.slice(0,8))}</span></td>
+                <td>
+                  ${r.name ? `<div style="font-weight:600;font-size:.88rem">${h(r.name)}</div>` : ''}
+                  <span class="mono" style="font-size:.75rem;color:var(--text-muted)">#${h(r.id.slice(0,8))}</span>
+                </td>
                 <td>${h(r.project_name || '-')}</td>
                 <td>${statusBadge(r.status)}</td>
                 <td style="white-space:nowrap">${formatDateTime(r.requested_pickup_datetime)}</td>

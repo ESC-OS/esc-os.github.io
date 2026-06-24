@@ -110,6 +110,7 @@ async function init() {
       ${draftHint}
       <div class="req-header">
         <div class="req-title-row">
+          ${request.name ? `<span style="font-weight:700;font-size:1.05rem">${h(request.name)}</span>` : ''}
           <span class="req-id">#${h(id.slice(0, 8))}</span>
           ${statusBadge(status)}
         </div>
