@@ -7,7 +7,8 @@ export function h(s) {
 const STATUS_LABELS = {
   draft:'ร่าง', pending:'รอดำเนินการ', processing:'กำลังดำเนินการ',
   ready_for_pickup:'พร้อมรับ', in_lend:'กำลังยืม', overdue:'เกินกำหนด',
-  returned:'คืนแล้ว', completed:'เสร็จสิ้น', rejected:'ถูกปฏิเสธ', cancelled:'ยกเลิกแล้ว', return_rejected:'คืนถูกปฏิเสธ',
+  returned:'คืนแล้ว', completed:'เสร็จสิ้น', rejected:'ถูกปฏิเสธ',
+  cancelled:'ยกเลิกแล้ว', return_rejected:'คืนถูกปฏิเสธ', archived:'เก็บถาวร',
 };
 export function statusBadge(status) {
   return `<span class="badge badge-${h(status)}">${h(STATUS_LABELS[status] || status)}</span>`;
@@ -150,7 +151,7 @@ function renderFooter() {
 }
 
 // Render the navbar
-// status: { unread_notifications, pending_requests, pending_returns, overdue_requests }
+// status: { unread_notifications, pending_requests, pending_returns, overdue_requests, pending_visits }
 export function renderNavbar(user, status = {}) {
   const root = document.getElementById('navbar-root');
   if (!root || !user) return;
@@ -158,11 +159,12 @@ export function renderNavbar(user, status = {}) {
   const active  = (path) => seg === path ? 'active' : '';
   const isStaff = user.role === 'staff' || user.role === 'admin';
 
-  const unread     = status.unread_notifications ?? 0;
-  const pendingReq = status.pending_requests      ?? 0;
-  const pendingRet = status.pending_returns       ?? 0;
-  const overdue    = status.overdue_requests      ?? 0;
-  const reqTotal   = pendingReq + overdue;
+  const unread       = status.unread_notifications ?? 0;
+  const pendingReq   = status.pending_requests      ?? 0;
+  const pendingRet   = status.pending_returns       ?? 0;
+  const overdue      = status.overdue_requests      ?? 0;
+  const pendingVisit = status.pending_visits        ?? 0;
+  const reqTotal     = pendingReq + overdue;
 
   function adminBadge(count, danger = false) {
     if (!count) return '';
@@ -181,12 +183,15 @@ export function renderNavbar(user, status = {}) {
           <a href="/projects/"   class="nav-link ${active('/projects')}">โครงการ</a>
           <a href="/items/"      class="nav-link ${active('/items')}">สต๊อก</a>
           <a href="/requests/"   class="nav-link ${active('/requests')}">คำขอ</a>
+          <a href="/visits/"     class="nav-link ${active('/visits')}">นัดชม</a>
           <a href="/policy/"     class="nav-link ${active('/policy')}">Policy</a>
           <a href="/contact/"    class="nav-link ${active('/contact')}">Contact Us</a>
           ${isStaff ? `
             <span class="nav-divider"></span>
+            <a href="/admin-calendar/" class="nav-link nav-link-admin ${active('/admin-calendar')}">ปฏิทิน</a>
             <a href="/admin-requests/" class="nav-link nav-link-admin ${active('/admin-requests')}">คำขอ${adminBadge(reqTotal, overdue > 0)}</a>
             <a href="/admin-returns/"  class="nav-link nav-link-admin ${active('/admin-returns')}">การคืน${adminBadge(pendingRet)}</a>
+            <a href="/admin-visits/"   class="nav-link nav-link-admin ${active('/admin-visits')}">นัดชม${adminBadge(pendingVisit)}</a>
             <a href="/admin-items/"    class="nav-link nav-link-admin ${active('/admin-items')}">คลัง</a>
             ${user.role === 'admin' ? `<a href="/admin-users/" class="nav-link nav-link-admin ${active('/admin-users')}">ผู้ใช้</a>` : ''}
           ` : ''}
@@ -217,7 +222,7 @@ export function renderNavbar(user, status = {}) {
 
 // Open a modal (appends to #modal-root, returns close function)
 // Options: { wide: true } expands to 580px for forms with two-column rows
-export function openModal(titleText, bodyHtml, { wide = false } = {}) {
+export function openModal(titleText, bodyHtml, { wide = false, onClose } = {}) {
   const root = document.getElementById('modal-root');
   root.innerHTML = `
     <div class="modal-overlay" id="modal-overlay">
@@ -226,7 +231,7 @@ export function openModal(titleText, bodyHtml, { wide = false } = {}) {
         ${bodyHtml}
       </div>
     </div>`;
-  const close = () => { root.innerHTML = ''; };
+  const close = () => { root.innerHTML = ''; onClose?.(); };
   root.querySelector('#modal-overlay').addEventListener('click', (e) => {
     if (e.target.id === 'modal-overlay') close();
   });

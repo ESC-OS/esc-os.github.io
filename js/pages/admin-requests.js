@@ -8,7 +8,7 @@ const STATUS_OPTS = [
   ['ready_for_pickup', 'พร้อมรับ'], ['in_lend', 'กำลังยืม'],
   ['overdue', 'เกินกำหนด'], ['returned', 'คืนแล้ว (รอยืนยัน)'],
   ['', 'ทุกสถานะ'], ['completed', 'เสร็จสิ้น'],
-  ['rejected', 'ถูกปฏิเสธ'], ['cancelled', 'ยกเลิกแล้ว'],
+  ['rejected', 'ถูกปฏิเสธ'], ['cancelled', 'ยกเลิกแล้ว'], ['archived', 'เก็บถาวร'],
 ];
 
 async function init() {

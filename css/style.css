@@ -140,6 +140,7 @@ input, select, textarea { font-family: inherit; }
 .badge-completed        { background: var(--success-bg); color: var(--success); }
 .badge-rejected         { background: var(--error-bg); color: var(--error); }
 .badge-cancelled        { background: #f2f2f7; color: #8e8e93; }
+.badge-archived         { background: #f2f2f7; color: #8e8e93; }
 .badge-return_rejected  { background: #fff0e8; color: #c05200; }
 
 /* =====================================================
@@ -818,6 +819,13 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   border-radius: var(--radius-sm); border: 1px solid var(--border);
   flex-shrink: 0;
 }
+.return-photo-slot { flex-shrink: 0; }
+.return-photo-ph {
+  width: 110px; height: 90px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--bg); color: var(--text-muted); font-size: .75rem;
+}
 
 .status-pill {
   display: inline-flex; align-items: center;
@@ -1277,9 +1285,9 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   .nav-bell {
     display: flex; align-items: center; gap: .35rem;
     padding: .5rem;
-    color: var(--text-muted);
   }
-  .nav-bell:hover { background: rgba(0,0,0,.06); color: var(--text); }
+  .nav-right .nav-bell { color: var(--text-muted); }
+  .nav-right .nav-bell:hover { background: rgba(0,0,0,.06); color: var(--text); }
   .nav-bell .nav-notif-dot { margin-left: 2px; }
   .nav-bell-label { display: none; }
 
@@ -1352,6 +1360,10 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .search-dropdown-item:hover, .search-dropdown-item:focus { background: var(--bg); outline: none; }
 .search-dropdown-empty {
   padding: .75rem; color: var(--text-muted); font-size: .85rem; text-align: center;
+}
+.search-dropdown-up {
+  top: auto;
+  bottom: calc(100% + 2px);
 }
 
 /* =====================================================

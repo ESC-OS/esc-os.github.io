@@ -30,6 +30,16 @@ const api = {
 
 export function photoUrl(key) { return `${BASE}/upload/photo/${key}`; }
 
+export async function fetchPhotoBlobUrl(photoPath) {
+  if (!photoPath) return null;
+  const url = photoPath.startsWith('http') ? photoPath : BASE + photoPath;
+  try {
+    const res = await fetch(url, { credentials: 'include' });
+    if (!res.ok) return null;
+    return URL.createObjectURL(await res.blob());
+  } catch { return null; }
+}
+
 // Status (unread notifications + admin/staff counters in one round-trip)
 export const getStatus = () => api.get('/status');
 
@@ -66,7 +76,7 @@ export const deleteProject  = (id)        => api.delete(`/projects/${id}`);
 export const addProjectMember    = (id, data)   => api.post(`/projects/${id}/members`, data);
 export const removeProjectMember = (id, userId) => api.delete(`/projects/${id}/members/${userId}`);
 export const transferOwnership   = (id, userId) => api.patch(`/projects/${id}/transfer-ownership`, { user_id: userId });
-export const searchUsers         = (q)          => { const p = new URLSearchParams({ limit: 10 }); if (q) p.set('q', q); return api.get('/users/search?' + p); };
+export const searchUsers         = (q, role)    => { const p = new URLSearchParams({ limit: 10 }); if (q) p.set('q', q); if (role) p.set('role', role); return api.get('/users/search?' + p); };
 
 // Requests
 export const getRequests       = (status)       => api.get(`/requests${status ? '?status=' + status : ''}`);
@@ -76,6 +86,7 @@ export const updateRequest     = (id, data)     => api.patch(`/requests/${id}`, 
 export const addRequestItem    = (id, data)     => api.post(`/requests/${id}/items`, data);
 export const removeRequestItem = (id, itemId)   => api.delete(`/requests/${id}/items/${itemId}`);
 export const patchRequestItem  = (id, itemId, data) => api.patch(`/requests/${id}/items/${itemId}`, data);
+export const assignHandler     = (id, userId)       => api.patch(`/requests/${id}/assign`, { user_id: userId });
 export const submitRequest     = (id)           => api.post(`/requests/${id}/submit`);
 export const cancelRequest     = (id)           => api.patch(`/requests/${id}/cancel`);
 export const rejectRequest     = (id, data)     => api.patch(`/requests/${id}/reject`, data);
@@ -86,9 +97,21 @@ export const confirmPickup     = (id)           => api.patch(`/requests/${id}/pi
 export const getRequestReturns = (id)           => api.get(`/requests/${id}/returns`);
 export const submitReturn      = (id, data)     => api.post(`/requests/${id}/returns`, data);
 
+// Calendar
+export const getCalendar = (from, to) => api.get(`/calendar?from=${from}&to=${to}`);
+
+// Visits (stock room)
+export const getVisits    = (status) => api.get(`/visits${status ? '?status=' + status : ''}`);
+export const getVisit     = (id)   => api.get(`/visits/${id}`);
+export const createVisit  = (data) => api.post('/visits', data);
+export const confirmVisit = (id)        => api.patch(`/visits/${id}/confirm`);
+export const cancelVisit  = (id, data)  => api.patch(`/visits/${id}/cancel`, data ?? undefined);
+export const assignVisit  = (id, userId) => api.patch(`/visits/${id}/assign`, { user_id: userId });
+
 // Returns (admin)
 export const getAllReturns  = (status) => api.get(`/returns${status ? '?status=' + status : ''}`);
-export const confirmReturn  = (id)        => api.patch(`/returns/${id}/confirm`);
+export const getReturn      = (id)     => api.get(`/returns/${id}`);
+export const confirmReturn  = (id, data)  => api.patch(`/returns/${id}/confirm`, data);
 export const rejectReturn   = (id, data)  => api.patch(`/returns/${id}/reject`, data);
 
 // Notifications

@@ -3,7 +3,7 @@ const MONTHS = ['มกราคม','กุมภาพันธ์','มีน
 const DAYS   = ['อา','จ','อ','พ','พฤ','ศ','ส'];
 
 // Time slots allowed by the backend for pickup/return
-const FIXED_TIMES = ['12:30', '16:00'];
+const FIXED_TIMES = ['12:30', '16:30'];
 
 function pad(n) { return String(n).padStart(2, '0'); }
 function toISO(y, m, d) { return `${y}-${pad(m + 1)}-${pad(d)}`; }

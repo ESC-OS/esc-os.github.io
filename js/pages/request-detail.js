@@ -1,11 +1,11 @@
 import { requireAuth, refreshNavStatus } from '../auth.js';
 import {
-  getRequest, getRequestReturns, getItems, getProject,
+  getRequest, getReturn, getRequestReturns, getItems, getProject,
   addRequestItem, removeRequestItem, patchRequestItem, submitRequest, cancelRequest,
   rejectRequest, processRequest, tickItem, markReady, confirmPickup,
-  submitReturn, uploadPhoto, updateRequest, photoUrl,
+  submitReturn, uploadPhoto, updateRequest, photoUrl, assignHandler, searchUsers, fetchPhotoBlobUrl,
 } from '../api.js';
-import { h, statusBadge, formatDateTime, formatCountdown, showToast, showConfirm } from '../ui.js';
+import { h, statusBadge, formatDateTime, formatCountdown, showToast, showConfirm, openModal } from '../ui.js';
 import { renderPicker, initPicker } from '../datepicker.js';
 
 let countdownInterval = null;
@@ -190,20 +190,41 @@ async function init() {
           ${request.admin_note ? `<div class="alert alert-info" style="margin-top:.75rem">หมายเหตุจากเจ้าหน้าที่: ${h(request.admin_note)}</div>` : ''}`}
       </div>
 
+      ${request.processing_by ? `
       <div class="card">
-        <div class="card-title">รายการอุปกรณ์</div>
-        <div id="items-wrap">${itemsTable()}</div>
-
-        ${isOwner && status === 'draft' ? `
-          <div class="add-item-row" id="add-item-section">
-            <div style="position:relative;flex:1;min-width:0">
-              <input class="form-input" id="add-item-search" placeholder="ค้นหาอุปกรณ์..." autocomplete="off" style="margin:0">
-              <div id="item-search-results" class="search-dropdown" style="display:none"></div>
-            </div>
-            <input type="number" class="add-item-qty" id="add-item-qty" min="1" value="1">
-            <button class="btn btn-primary btn-sm" id="btn-add-item" disabled>+ เพิ่ม</button>
+        <div class="card-header">
+          <div class="card-title" style="margin-bottom:0">ผู้ดำเนินการ</div>
+          ${isStaff && ['processing', 'ready_for_pickup', 'in_lend'].includes(status)
+            ? `<button class="btn btn-secondary btn-sm" id="btn-reassign">เปลี่ยน</button>` : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:.75rem;margin-top:.85rem">
+          ${request.handler_avatar_url
+            ? `<img src="${h(request.handler_avatar_url)}" alt="${h(request.handler_name)}" class="member-avatar" style="width:40px;height:40px;flex-shrink:0">`
+            : `<div class="member-avatar-ph" style="width:40px;height:40px;font-size:.9rem;flex-shrink:0">${h((request.handler_name || '?').charAt(0))}</div>`}
+          <div>
+            <div style="font-weight:600">${h(request.handler_name)}</div>
+            <div style="font-size:.8rem;color:var(--text-muted)">${h(request.handler_email)}</div>
+            ${request.handler_phone   ? `<div style="font-size:.8rem;color:var(--text-muted)">${h(request.handler_phone)}</div>` : ''}
+            ${request.handler_line_id ? `<div style="font-size:.8rem;color:var(--text-muted)">LINE: ${h(request.handler_line_id)}</div>` : ''}
           </div>
-          <div id="add-warnings"></div>` : ''}
+        </div>
+      </div>` : ''}
+
+      <div class="card">
+        <div class="card-header" style="flex-wrap:wrap;gap:.6rem">
+          <div class="card-title" style="margin-bottom:0">รายการอุปกรณ์</div>
+          ${isOwner && status === 'draft' ? `
+            <div class="add-item-row" id="add-item-section" style="border:none;padding:0;margin:0;flex:1;min-width:200px">
+              <div style="position:relative;flex:1;min-width:0">
+                <input class="form-input" id="add-item-search" placeholder="ค้นหาอุปกรณ์..." autocomplete="off" style="margin:0">
+                <div id="item-search-results" class="search-dropdown search-dropdown-up" style="display:none"></div>
+              </div>
+              <input type="number" class="add-item-qty" id="add-item-qty" min="1" value="1">
+              <button class="btn btn-primary btn-sm" id="btn-add-item" disabled>+ เพิ่ม</button>
+            </div>` : ''}
+        </div>
+        <div id="add-warnings"></div>
+        <div id="items-wrap">${itemsTable()}</div>
 
         ${isStaff && status === 'pending' ? `
           <div class="process-section">
@@ -249,10 +270,22 @@ async function init() {
                 <div>สถานะ: <strong>${r.status === 'confirmed' ? '✓ ยืนยันแล้ว' : r.status === 'rejected' ? '✗ ถูกปฏิเสธ' : 'รอยืนยัน'}</strong></div>
                 ${r.note ? `<div>หมายเหตุ: ${h(r.note)}</div>` : ''}
                 ${r.admin_note ? `<div class="alert alert-info">หมายเหตุเจ้าหน้าที่: ${h(r.admin_note)}</div>` : ''}
-                ${r.photo_url ? `<img src="${h(r.photo_url)}" alt="รูปการคืน" class="return-photo">` : ''}
+                <div class="return-photo-slot" data-return-id="${h(r.id)}">
+                  <div class="return-photo-ph">กำลังโหลดรูป...</div>
+                </div>
               </div>`).join('')}
           </div>
         </div>` : ''}`;
+
+    document.querySelectorAll('.return-photo-slot').forEach(async slot => {
+      try {
+        const { return: ret } = await getReturn(slot.dataset.returnId);
+        if (!ret.photo_url) { slot.innerHTML = ''; return; }
+        const blobUrl = await fetchPhotoBlobUrl(ret.photo_url);
+        if (blobUrl) slot.innerHTML = `<img src="${blobUrl}" alt="รูปการคืน" class="return-photo">`;
+        else slot.innerHTML = '';
+      } catch { slot.innerHTML = ''; }
+    });
 
     if (status === 'ready_for_pickup' && request.pickup_timeout_at) {
       const updateCountdown = () => {
@@ -370,7 +403,7 @@ async function init() {
 
     document.getElementById('btn-submit')?.addEventListener('click', async () => {
       if (!await showConfirm('ยืนยันการส่งคำขอ?')) return;
-      try { await submitRequest(id); showToast('ส่งคำขอสำเร็จ'); await renderPage(); refreshNavStatus(); }
+      try { await submitRequest(id); refreshNavStatus(); window.location.href = '/requests/'; }
       catch (err) { errBox(err.message); }
     });
 
@@ -394,6 +427,96 @@ async function init() {
       btn.addEventListener('click', async () => {
         try { await tickItem(id, btn.dataset.item); await renderPage(); }
         catch (err) { errBox(err.message); }
+      });
+    });
+
+    document.getElementById('btn-reassign')?.addEventListener('click', () => {
+      let selectedUser = null;
+      let debounceTimer;
+
+      const close = openModal('เปลี่ยนผู้ดำเนินการ', `
+        <div id="reassign-error"></div>
+        <div class="form">
+          <div class="form-group" style="position:relative">
+            <label class="form-label">ค้นหาเจ้าหน้าที่</label>
+            <input class="form-input" id="reassign-search" placeholder="ค้นหาชื่อหรืออีเมล..." autocomplete="off">
+            <div id="reassign-results" class="search-dropdown" style="display:none"></div>
+          </div>
+          <div id="reassign-selected" style="display:none;margin-top:.35rem"></div>
+          <div class="form-actions">
+            <button class="btn btn-primary" id="do-reassign-btn" disabled>เปลี่ยน</button>
+            <button class="btn btn-secondary" id="cancel-reassign-btn">ยกเลิก</button>
+          </div>
+        </div>`);
+
+      const searchInput = document.getElementById('reassign-search');
+      const resultsBox  = document.getElementById('reassign-results');
+      const selectedBox = document.getElementById('reassign-selected');
+      const confirmBtn  = document.getElementById('do-reassign-btn');
+      const errorBox    = document.getElementById('reassign-error');
+
+      function pickUser(u) {
+        selectedUser = u;
+        resultsBox.style.display = 'none';
+        searchInput.value = u.name;
+        selectedBox.style.display = 'block';
+        selectedBox.innerHTML = `
+          <div style="display:flex;align-items:center;gap:.6rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.5rem .75rem">
+            ${u.avatar_url
+              ? `<img src="${h(u.avatar_url)}" class="member-avatar" alt="${h(u.name)}">`
+              : `<div class="member-avatar-ph">${h(u.name.charAt(0))}</div>`}
+            <div>
+              <div style="font-weight:600;font-size:.88rem">${h(u.name)}</div>
+              <div style="font-size:.75rem;color:var(--text-muted)">${h(u.email)}</div>
+            </div>
+          </div>`;
+        confirmBtn.disabled = false;
+      }
+
+      async function fetchResults(q) {
+        try {
+          const { users } = await searchUsers(q, 'staff');
+          resultsBox.innerHTML = users.length === 0
+            ? `<div class="search-dropdown-empty">ไม่พบเจ้าหน้าที่</div>`
+            : users.map((u, i) => `
+                <div class="search-dropdown-item" data-idx="${i}">
+                  ${u.avatar_url
+                    ? `<img src="${h(u.avatar_url)}" class="member-avatar" alt="${h(u.name)}">`
+                    : `<div class="member-avatar-ph">${h(u.name.charAt(0))}</div>`}
+                  <div>
+                    <div style="font-weight:600">${h(u.name)}</div>
+                    <div style="font-size:.75rem;color:var(--text-muted)">${h(u.email)}</div>
+                  </div>
+                </div>`).join('');
+          resultsBox.querySelectorAll('.search-dropdown-item').forEach(el => {
+            el.addEventListener('mousedown', e => { e.preventDefault(); pickUser(users[+el.dataset.idx]); });
+          });
+          resultsBox.style.display = 'block';
+        } catch {}
+      }
+
+      searchInput.addEventListener('focus', () => fetchResults(searchInput.value.trim()));
+      searchInput.addEventListener('input', () => {
+        selectedUser = null; confirmBtn.disabled = true;
+        selectedBox.style.display = 'none';
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => fetchResults(searchInput.value.trim()), 300);
+      });
+      searchInput.addEventListener('blur', () => setTimeout(() => { resultsBox.style.display = 'none'; }, 150));
+
+      document.getElementById('cancel-reassign-btn').addEventListener('click', close);
+      confirmBtn.addEventListener('click', async () => {
+        if (!selectedUser) return;
+        confirmBtn.disabled = true; confirmBtn.textContent = 'กำลังเปลี่ยน...';
+        try {
+          await assignHandler(id, selectedUser.id);
+          close();
+          showToast('เปลี่ยนผู้ดำเนินการสำเร็จ');
+          await renderPage();
+        } catch (err) {
+          errorBox.innerHTML = `<div class="alert alert-error">${h(err.message)}</div>`;
+          confirmBtn.disabled = false; confirmBtn.textContent = 'เปลี่ยน';
+        }
       });
     });
 
@@ -443,9 +566,8 @@ async function init() {
         const r2Key = await uploadPhoto(file);
         const note  = document.getElementById('return-note').value;
         await submitReturn(id, { photo_r2_key: r2Key, note: note || undefined });
-        showToast('ส่งการคืนสำเร็จ');
-        await renderPage();
         refreshNavStatus();
+        window.location.href = '/requests/';
       } catch (err) {
         errBox(err.message);
         btn.disabled = false; btn.textContent = 'ส่งการคืน';
