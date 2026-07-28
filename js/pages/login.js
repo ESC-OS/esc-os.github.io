@@ -9,32 +9,29 @@ const ERROR_MSGS = {
 };
 
 async function init() {
-  // Read and immediately clear the pre-OAuth flag (set before the OAuth redirect starts).
-  // This is a fallback for when Live Server strips query params from the /login redirect.
-  const oauthPending = localStorage.getItem('oauth_pending');
-  localStorage.removeItem('oauth_pending');
-
-  try {
-    const { user } = await getMe();
-    if (user) { window.location.href = '/dashboard.html'; return; }
-  } catch {}
+  // If already logged in, redirect to dashboard
+  if (localStorage.getItem('token')) {
+    try {
+      const res = await getMe();
+      if (res && res.data) {
+        window.location.href = 'dashboard.html';
+        return;
+      }
+    } catch {
+      // Token invalid — clear it and show login
+      localStorage.removeItem('token');
+    }
+  }
 
   const search = new URLSearchParams(window.location.search);
   const error  = search.get('error');
-
-  // URL params take priority (specific error). Fall back to the flag for the case
-  // where Live Server drops the query string on the /login → /login/ redirect.
-  const errMsg = error
-    ? (ERROR_MSGS[error] || 'เกิดข้อผิดพลาด กรุณาลองใหม่')
-    : oauthPending
-      ? 'ไม่สามารถเข้าสู่ระบบได้ กรุณาใช้บัญชี @chula.ac.th หรือ @student.chula.ac.th เท่านั้น'
-      : '';
+  const errMsg = error ? (ERROR_MSGS[error] || 'เกิดข้อผิดพลาด กรุณาลองใหม่') : '';
 
   document.getElementById('app').innerHTML = `
     <div class="login-page">
       <div class="login-card">
-        <img src="/public/ESC_logo.png" alt="กวศ." class="login-logo">
-        <h1 class="login-title">คลังอุปกรณ์</h1>
+        <img src="public/ESC_logo.png" alt="กวศ." class="login-logo">
+        <h1 class="login-title">Operation Support</h1>
         <p class="login-subtitle">คณะวิศวกรรมศาสตร์ จุฬาลงกรณ์มหาวิทยาลัย</p>
         ${errMsg ? `<div class="alert alert-error">${h(errMsg)}</div>` : ''}
         <button class="login-btn" id="login-btn">
@@ -51,8 +48,7 @@ async function init() {
     </div>`;
 
   document.getElementById('login-btn').addEventListener('click', () => {
-    localStorage.setItem('oauth_pending', '1');
-    window.location.href = loginUrl();
+    window.location.href = loginUrl(window.location.origin);
   });
 }
 

@@ -1,24 +1,43 @@
-import { getMe, postLogout, getNotifications } from './api.js';
+import { getMe, getNotifications } from './api.js';
 import { renderNavbar } from './ui.js';
 
-function redirectToLogin() {
-  const error = new URLSearchParams(window.location.search).get('error');
-  window.location.href = error ? `login.html?error=${encodeURIComponent(error)}` : 'login.html';
+const LOGIN_PAGE = 'login.html';
+const PROFILE_PAGE = 'profile.html';
+
+function currentPage() {
+  return window.location.pathname.split('/').pop() || 'index.html';
 }
 
 export async function requireAuth(roles = null) {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    window.location.href = LOGIN_PAGE;
+    return null;
+  }
+
   let user;
   try {
     const res = await getMe();
-    user = res.user;
+    user = res?.data;
   } catch {
-    redirectToLogin();
+    localStorage.removeItem('token');
+    window.location.href = LOGIN_PAGE;
     return null;
   }
+
   if (!user) {
-    redirectToLogin();
+    localStorage.removeItem('token');
+    window.location.href = LOGIN_PAGE;
     return null;
   }
+
+  // Profile gate: redirect to setup unless already there
+  const page = currentPage();
+  if (user.is_profile_complete === 0 && page !== PROFILE_PAGE) {
+    window.location.href = PROFILE_PAGE;
+    return null;
+  }
+
   if (roles && !roles.includes(user.role)) {
     window.location.href = 'dashboard.html';
     return null;
@@ -26,19 +45,11 @@ export async function requireAuth(roles = null) {
 
   let unread = 0;
   try {
-    const data = await getNotifications(1, 1);
-    unread = data.unreadCount ?? data.pagination?.unread ?? 0;
+    const notifRes = await getNotifications(1, 1);
+    unread = notifRes?.pagination?.unread ?? 0;
   } catch {}
 
-  // Clear any OAuth error hint so it doesn't linger after a successful login
-  localStorage.removeItem('oauth_pending');
-
   renderNavbar(user, unread);
-
-  document.getElementById('nav-logout-btn')?.addEventListener('click', async () => {
-    await postLogout().catch(() => {});
-    window.location.href = 'login.html';
-  });
 
   return user;
 }

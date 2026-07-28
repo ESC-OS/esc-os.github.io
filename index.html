@@ -1,10 +1,36 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="refresh" content="0; url=dashboard.html">
-  <title>คลังอุปกรณ์ กวศ.</title>
+  <title>Operation Support</title>
   <link rel="icon" type="image/png" href="public/ESC_logo.png">
 </head>
-<body></body>
+<body>
+<script>
+  (function () {
+    var path = window.location.pathname;
+
+    if (/\/auth\/callback\/?$/.test(path)) {
+      var params = new URLSearchParams(window.location.search);
+      var token  = params.get('token');
+      var error  = params.get('error');
+
+      // Strip "/auth/callback" to find the app root (works in subdirectories too)
+      var root = path.replace(/\/?auth\/callback\/?$/, '');
+      root = root ? root + '/' : '/';
+
+      if (token) {
+        localStorage.setItem('token', token);
+        window.location.replace(root + 'dashboard.html');
+      } else {
+        // login.js already handles ?error= params with Thai messages
+        window.location.replace(root + 'login.html?error=' + encodeURIComponent(error || 'token_exchange_failed'));
+      }
+    } else {
+      // Root visit — auth.js will redirect to login if not signed in
+      window.location.replace('dashboard.html');
+    }
+  })();
+</script>
+</body>
 </html>
