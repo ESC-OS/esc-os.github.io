@@ -111,6 +111,7 @@ export function renderNavbar(user, unread = 0) {
           <div class="sidebar-section-label" style="margin-top:.5rem;">แอดมิน</div>
           <a href="admin-items.html"     class="sidebar-link ${active('admin-items.html')}">จัดการอุปกรณ์</a>
           <a href="requests.html?view=admin" class="sidebar-link ${active('requests.html')}">คำขอยืม</a>
+          <a href="admin-visits.html"    class="sidebar-link ${active('admin-visits.html')}">นัดชม</a>
           <a href="admin-returns.html"   class="sidebar-link ${active('admin-returns.html')}">การคืน</a>
           <a href="admin-calendar.html"  class="sidebar-link ${active('admin-calendar.html')}">ปฏิทิน</a>
           <a href="admin-slots.html"     class="sidebar-link ${active('admin-slots.html')}">ช่วงเวลา</a>
