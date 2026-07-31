@@ -97,23 +97,24 @@ Returns full audit log for the item.
 | PATCH | /requests/:id | [profile] | Edit draft: `{ name?, requested_pickup_datetime?, requested_return_datetime? }` — draft only |
 | POST | /requests/:id/submit | [profile] | draft → pending. Requires at least 1 item + both dates set. Validates dates against slots and project range. Notifies all admins |
 | PATCH | /requests/:id/process | [A] | pending → processing. Body: `{ confirmed_pickup_datetime?, admin_note? }`. Auto-sets all `quantity_approved = quantity_requested` and reserves stock |
-| PATCH | /requests/:id/items/:itemId | [A] | Adjust `quantity_approved` per item — **processing only**. Body: `{ quantity_approved }`. Updates stock delta accordingly |
+| PATCH | /requests/:id/items/:itemId | [profile] | Two paths: **draft + owner** → `{ quantity_requested }` updates qty in place, returns warnings if qty > stock; **processing + admin** → `{ quantity_approved }` adjusts reserved stock. Accepts either the row `id` (BI-XXXX) or the catalog `item_id` (XX-NNNN) as `:itemId` |
 | PATCH | /requests/:id/assign | [A] | Assign/change handler. Body: `{ user_id }`. Works in: processing, ready_for_pickup, in_lend. Target must be an admin account |
-| PATCH | /requests/:id/ready | [A] | processing → ready_for_pickup. Sets `pickup_timeout_at` = now + 7 days. Notifies requester |
+| PATCH | /requests/:id/ready | [A] | processing → ready_for_pickup. Body: `{ confirmed_pickup_datetime, admin_note? }` — **`confirmed_pickup_datetime` required**. Sets `pickup_timeout_at` = confirmed datetime + 7 days. If confirmed datetime differs from `requested_pickup_datetime`, notifies requester of the change before sending the standard ready notification |
 | PATCH | /requests/:id/pickup | owner or [A] | ready_for_pickup → in_lend. Optional body: `{ pickup_photo_r2_key? }` |
-| PATCH | /requests/:id/cancel | owner or [A] | Cancel from draft/pending/processing/ready_for_pickup. Restores stock if was processing/ready |
-| POST | /requests/:id/conditions | [profile] | Submit condition report (in_lend only). Replaces any existing. Body: `{ conditions: [{ borrow_request_item_id, condition_type: "missing"\|"broken", note? }] }`. Empty array = nothing wrong |
+| PATCH | /requests/:id/cancel | owner or [A] | Permanently cancels. Allowed from: draft, pending, processing, ready_for_pickup. Stock restored if was processing/ready. Admin cancelling notifies requester |
+| PATCH | /requests/:id/unsubmit | owner | **pending → draft** (clears `submitted_at`). Owner only. Use to pull back a submitted request for editing without permanently cancelling it |
+| POST | /requests/:id/conditions | [profile] | Submit condition report (in_lend only). **Must be called before POST /returns.** Replaces any existing. Body: `{ conditions: [{ borrow_request_item_id, condition_type: "missing"\|"broken", note? }] }`. Empty array = nothing wrong. Stamps `condition_reported_at` on the request |
 | GET | /requests/:id/conditions | [profile] | List conditions (joined with item name) |
 | GET | /requests/:id/returns | [profile] | List return submissions |
-| POST | /requests/:id/returns | [profile] | Submit return (in_lend only). Body: `{ photo_r2_key, note?, all_items_ok }`. Sets status → returned. Notifies admins |
+| POST | /requests/:id/returns | [profile] | Submit return (in_lend only). **Blocked with 400 if condition report has not been submitted.** Body: `{ photo_r2_key, note?, all_items_ok }`. Sets status → returned. Notifies admins |
 
 ---
 
 ## Returns — `/returns`
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | /returns | [A] | List all. Query: `?status=pending\|confirmed` |
-| GET | /returns/:id | [profile] | Detail + conditions array |
+| GET | /returns | [A] | List all. Query: `?status=pending\|confirmed`. Each row includes `request_name`, `project_name`, `requester_id`, `requester_name`, `submitted_by_name` |
+| GET | /returns/:id | [profile] | Detail + `conditions` array + `items` array (each item includes `item_name`, `item_unit`, `quantity_approved`, `quantity_returned`, `quantity_to_repair`). Also includes `request_name`, `requester_id`, `requester_name` |
 | PATCH | /returns/:id/confirm | [A] | returned → completed. Body: `{ items: [{ item_id, quantity_returned, quantity_to_repair? }] }` required. Stock: returned→available, to_repair→repair, remainder (lost) deducted from total. Notifies requester |
 
 ---

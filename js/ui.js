@@ -1,4 +1,4 @@
-import { postLogout } from './api.js';
+import { postLogout, getRequests, getAllReturns, getVisits, fetchPhotoUrl } from './api.js';
 import { initDatePickers } from './datepicker.js';
 
 // Escape HTML to prevent XSS
@@ -34,6 +34,15 @@ export function formatCountdown(iso) {
   const mins  = Math.floor((ms % 36e5) / 6e4);
   if (days > 0) return `เหลือ ${days} วัน ${hours} ชั่วโมง`;
   return `เหลือ ${hours} ชั่วโมง ${mins} นาที`;
+}
+
+// Load all [data-photo-key] images in a container with auth headers
+export function loadAuthPhotos(container = document) {
+  container.querySelectorAll('img[data-photo-key]').forEach(async img => {
+    const url = await fetchPhotoUrl(img.dataset.photoKey).catch(() => null);
+    if (url) img.src = url;
+    else img.style.display = 'none';
+  });
 }
 
 // Show a fixed-position toast error (always visible regardless of scroll position)
@@ -109,10 +118,11 @@ export function renderNavbar(user, unread = 0) {
         </a>
         ${isAdmin ? `
           <div class="sidebar-section-label" style="margin-top:.5rem;">แอดมิน</div>
-          <a href="admin-items.html"     class="sidebar-link ${active('admin-items.html')}">จัดการอุปกรณ์</a>
-          <a href="requests.html?view=admin" class="sidebar-link ${active('requests.html')}">คำขอยืม</a>
-          <a href="admin-visits.html"    class="sidebar-link ${active('admin-visits.html')}">นัดชม</a>
-          <a href="admin-returns.html"   class="sidebar-link ${active('admin-returns.html')}">การคืน</a>
+          <a href="admin-items.html"  class="sidebar-link ${active('admin-items.html')}">จัดการอุปกรณ์</a>
+          <a href="admin-queue.html"  class="sidebar-link ${active('admin-queue.html')}">
+            จัดการคำขอ
+            <span id="sidebar-queue-badge" class="sidebar-notif-dot" style="display:none"></span>
+          </a>
           <a href="admin-calendar.html"  class="sidebar-link ${active('admin-calendar.html')}">ปฏิทิน</a>
           <a href="admin-slots.html"     class="sidebar-link ${active('admin-slots.html')}">ช่วงเวลา</a>
           <a href="admin-holidays.html"  class="sidebar-link ${active('admin-holidays.html')}">วันหยุด</a>
@@ -124,6 +134,25 @@ export function renderNavbar(user, unread = 0) {
         <button class="sidebar-logout" id="nav-logout-btn">ออกจากระบบ</button>
       </div>
     </aside>`;
+
+  // ── Admin pending badge (fire-and-forget) ────────────────
+  if (isAdmin) {
+    Promise.allSettled([
+      getRequests({ limit: 100, status: 'pending' }),
+      getAllReturns('pending'),
+      getVisits({ limit: 100, status: 'pending' }),
+    ]).then(([rq, rt, vs]) => {
+      const total =
+        (rq.status === 'fulfilled' ? (rq.value?.data?.length ?? 0) : 0) +
+        (rt.status === 'fulfilled' ? (rt.value?.data?.length ?? 0) : 0) +
+        (vs.status === 'fulfilled' ? (vs.value?.data?.length ?? 0) : 0);
+      const badge = document.getElementById('sidebar-queue-badge');
+      if (badge && total > 0) {
+        badge.textContent = total > 99 ? '99+' : String(total);
+        badge.style.display = 'inline-flex';
+      }
+    }).catch(() => {});
+  }
 
   // ── Topbar ───────────────────────────────────────────────
   if (topbarEl) {

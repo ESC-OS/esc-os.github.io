@@ -1,6 +1,6 @@
 import {
   getProject, createProject, updateProject,
-  getProjects, getSlots, getItems,
+  getProjects, getSlots, getItems, getHolidays,
   createRequest, updateRequest, addRequestItem, removeRequestItem, adjustRequestItem, submitRequest,
   createDeposit, updateDeposit, addDepositItem, submitDeposit,
   createVisit, getRequests,
@@ -123,9 +123,12 @@ export async function openProjectModal({ editId, onSuccess } = {}) {
 
 // ── Request Modal (2-step) ───────────────────────────────────────────────────
 
+const _DOW = { sunday:0, monday:1, tuesday:2, wednesday:3, thursday:4, friday:5, saturday:6 };
+function _dowNum(v) { return typeof v === 'number' ? (v + 1) % 7 : (_DOW[v] ?? -1); }
+
 function _upcomingSlots(slot, weeks = 4) {
   const out = [], now = new Date();
-  const target = slot.day_of_week === 7 ? 0 : slot.day_of_week;
+  const target = _dowNum(slot.day_of_week);
   const [hh, mm] = slot.time.split(':').map(Number);
   for (let w = 0; w < weeks * 7 + 7; w++) {
     const d = new Date(now); d.setDate(now.getDate() + w);
@@ -361,12 +364,12 @@ export async function openDepositModal({ projectId, onSuccess } = {}) {
 const _THAI_DAYS = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
 
 function _nextDates(slot, n = 4) {
-  const target = slot.day_of_week === 7 ? 0 : slot.day_of_week;
+  const target = _dowNum(slot.day_of_week);
   const today = new Date(); today.setHours(0,0,0,0);
   const dates = [], cursor = new Date(today);
   cursor.setDate(cursor.getDate() + 1);
   while (dates.length < n) {
-    if (cursor.getDay() === target) dates.push(cursor.toISOString().slice(0, 10));
+    if (cursor.getDay() === target) dates.push(`${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}-${String(cursor.getDate()).padStart(2,'0')}`);
     cursor.setDate(cursor.getDate() + 1);
     if (cursor - today > 60 * 864e5) break;
   }
@@ -376,28 +379,45 @@ function _nextDates(slot, n = 4) {
 export async function openVisitModal({ projectId, onSuccess } = {}) {
   const lc = openModal('จองเยี่ยมชม', '<div class="spinner" style="margin:2rem auto"></div>');
 
-  let projects = [], slots = [], reqs = [];
+  let projects = [], slots = [], reqs = [], holidays = [];
   try {
-    const [pr, sr, rr] = await Promise.all([
+    const year = new Date().getFullYear();
+    const [pr, sr, rr, hr] = await Promise.all([
       getProjects(),
       getSlots('visit'),
       getRequests('in_lend').catch(() => null),
+      getHolidays(year).catch(() => ({ data: [] })),
     ]);
     projects = pr.data ?? [];
     slots    = sr.data ?? [];
     reqs     = rr?.requests ?? rr?.data ?? [];
+    holidays = (hr?.data ?? []).map(h => h.date);
   } catch (err) {
     lc(); showError('โหลดข้อมูลไม่สำเร็จ: ' + err.message); return;
   }
 
-  const slotOpts = [];
+  // Build available dates: date string → sorted times[]
+  const holidaySet = new Set(holidays);
+  const availMap   = new Map();
   for (const s of slots.filter(s => s.is_active && s.service_type === 'visit')) {
-    for (const date of _nextDates(s, 4)) {
-      const d = new Date(date + 'T12:00:00');
-      slotOpts.push({ slotId: s.id, date, label: `${_THAI_DAYS[d.getDay()]} ${d.toLocaleDateString('th-TH', {day:'numeric',month:'short',year:'numeric'})} เวลา ${h(s.time)}` });
+    for (const date of _nextDates(s, 8)) {
+      if (holidaySet.has(date)) continue;
+      if (!availMap.has(date)) availMap.set(date, []);
+      if (!availMap.get(date).includes(s.time)) availMap.get(date).push(s.time);
     }
   }
-  slotOpts.sort((a, b) => a.date > b.date ? 1 : a.date < b.date ? -1 : 0);
+  availMap.forEach(times => times.sort());
+
+  // Calendar state
+  const today    = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  const MONTHS   = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
+                    'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+  const DAYS     = ['อา','จ','อ','พ','พฤ','ศ','ส'];
+  let calY = today.getFullYear(), calM = today.getMonth();
+  let selDate = null, selTime = null;
+
+  function ds(y, m, d) { return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
 
   lc();
   const close = openModal('จองเยี่ยมชม', `
@@ -412,13 +432,9 @@ export async function openVisitModal({ projectId, onSuccess } = {}) {
       </div>
       <div class="form-group">
         <label class="form-label">วันเยี่ยมชม <span class="form-required">*</span></label>
-        <select class="form-select" id="vt-slot">
-          <option value="">-- เลือกวันและเวลา --</option>
-          ${slotOpts.length
-            ? slotOpts.map(o => `<option value="${h(o.slotId)}" data-date="${h(o.date)}">${o.label}</option>`).join('')
-            : '<option value="" disabled>ไม่มีช่วงเวลาที่เปิดให้จอง</option>'
-          }
-        </select>
+        ${availMap.size === 0
+          ? `<p style="color:var(--error);font-size:.85rem;margin:0">ไม่มีช่วงเวลาที่เปิดให้จอง</p>`
+          : `<div id="vt-cal"></div><div id="vt-times"></div>`}
       </div>
       <div class="form-group">
         <label class="form-label">จำนวนคน <span class="form-required">*</span></label>
@@ -438,21 +454,105 @@ export async function openVisitModal({ projectId, onSuccess } = {}) {
       </div>
     </div>`);
 
+  function renderCal() {
+    const el = document.getElementById('vt-cal');
+    if (!el) return;
+    const firstDow  = new Date(calY, calM, 1).getDay();
+    const daysInMo  = new Date(calY, calM + 1, 0).getDate();
+    const maxDate   = new Date(today); maxDate.setDate(maxDate.getDate() + 60);
+    const canPrev   = calY > today.getFullYear() || calM > today.getMonth();
+    const canNext   = new Date(calY, calM + 1, 1) <= maxDate;
+    const navBtn = (id, label, on) =>
+      `<button type="button" id="${id}" style="background:none;border:1px solid var(--border);border-radius:6px;width:28px;height:28px;cursor:${on?'pointer':'default'};color:${on?'var(--text)':'var(--border-strong,#ccc)'}" ${!on?'disabled':''}>${label}</button>`;
+
+    let cells = '';
+    for (let i = 0; i < firstDow; i++) cells += '<div></div>';
+    for (let d = 1; d <= daysInMo; d++) {
+      const date    = ds(calY, calM, d);
+      const avail   = availMap.has(date) && date >= todayStr;
+      const selected = date === selDate;
+      let bg = 'transparent', color = 'var(--text-muted)', cursor = 'default', border = 'none', fw = '400';
+      if (selected)      { bg = 'var(--primary)'; color = '#fff'; cursor = 'pointer'; fw = '700'; }
+      else if (avail)    { bg = 'var(--primary-50,#fdf2f2)'; color = 'var(--primary)'; cursor = 'pointer'; border = '1px solid var(--primary)'; fw = '600'; }
+      cells += `<div style="text-align:center;padding:2px">
+        <div class="${avail?'vt-day':''}\" data-date="${avail?date:''}"
+          style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+            font-size:.83em;margin:auto;background:${bg};color:${color};cursor:${cursor};border:${border};font-weight:${fw}">
+          ${d}
+        </div>
+      </div>`;
+    }
+
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem">
+        ${navBtn('vt-prev','‹',canPrev)}
+        <span style="font-weight:700;font-size:.88em">${MONTHS[calM]} ${calY+543}</span>
+        ${navBtn('vt-next','›',canNext)}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px;margin-bottom:.25rem">
+        ${DAYS.map((d,i) => `<div style="font-size:.7em;font-weight:700;text-align:center;padding:.25rem 0;color:${i===0?'var(--error)':'var(--text-muted)'}">${d}</div>`).join('')}
+        ${cells}
+      </div>`;
+
+    document.getElementById('vt-prev')?.addEventListener('click', () => {
+      if (!canPrev) return;
+      if (--calM < 0) { calM = 11; calY--; }
+      renderCal();
+    });
+    document.getElementById('vt-next')?.addEventListener('click', () => {
+      if (!canNext) return;
+      if (++calM > 11) { calM = 0; calY++; }
+      renderCal();
+    });
+    el.querySelectorAll('.vt-day[data-date]').forEach(day => {
+      if (!day.dataset.date) return;
+      day.addEventListener('click', () => {
+        selDate = day.dataset.date; selTime = null;
+        renderCal(); renderTimes();
+      });
+    });
+  }
+
+  function renderTimes() {
+    const el = document.getElementById('vt-times');
+    if (!el || !selDate) { if (el) el.innerHTML = ''; return; }
+    const times = availMap.get(selDate) ?? [];
+    el.innerHTML = `
+      <div style="margin-top:.5rem">
+        <label class="form-label" style="font-size:.82em;color:var(--text-muted)">เวลา <span class="form-required">*</span></label>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.25rem">
+          ${times.map(t => `
+            <button type="button" class="vt-time" data-time="${h(t)}"
+              style="padding:.3rem .9rem;border-radius:20px;font-size:.88em;cursor:pointer;
+                border:1px solid ${t===selTime?'var(--primary)':'var(--border)'};
+                background:${t===selTime?'var(--primary)':'#fff'};
+                color:${t===selTime?'#fff':'var(--text)'}">
+              ${h(t)}
+            </button>`).join('')}
+        </div>
+      </div>`;
+    el.querySelectorAll('.vt-time').forEach(btn => {
+      btn.addEventListener('click', () => { selTime = btn.dataset.time; renderTimes(); });
+    });
+  }
+
+  renderCal();
+
   document.getElementById('vt-cancel').addEventListener('click', close);
   document.getElementById('vt-submit').addEventListener('click', async () => {
-    const pId    = document.getElementById('vt-proj').value;
-    const slotId = document.getElementById('vt-slot').value;
-    const num    = parseInt(document.getElementById('vt-num').value, 10);
-    const rId    = document.getElementById('vt-req').value || undefined;
-    const errEl  = document.getElementById('vt-err');
+    const pId   = document.getElementById('vt-proj').value;
+    const num   = parseInt(document.getElementById('vt-num').value, 10);
+    const rId   = document.getElementById('vt-req').value || undefined;
+    const errEl = document.getElementById('vt-err');
     errEl.innerHTML = '';
     if (!pId)               { errEl.innerHTML = '<div class="alert alert-error">กรุณาเลือกโครงการ</div>'; return; }
-    if (!slotId)            { errEl.innerHTML = '<div class="alert alert-error">กรุณาเลือกวันและเวลา</div>'; return; }
+    if (!selDate)           { errEl.innerHTML = '<div class="alert alert-error">กรุณาเลือกวันเยี่ยมชม</div>'; return; }
+    if (!selTime)           { errEl.innerHTML = '<div class="alert alert-error">กรุณาเลือกเวลา</div>'; return; }
     if (!num||num<1||num>5) { errEl.innerHTML = '<div class="alert alert-error">จำนวนคนต้องอยู่ระหว่าง 1 ถึง 5</div>'; return; }
     const btn = document.getElementById('vt-submit');
     btn.disabled = true; btn.textContent = 'กำลังส่ง…';
     try {
-      await createVisit({ project_id: pId, slot_id: slotId, num_people: num, borrow_request_id: rId });
+      await createVisit({ project_id: pId, visit_date: selDate, visit_time: selTime, num_people: num, borrow_request_id: rId });
       close(); onSuccess?.();
     } catch (err) {
       errEl.innerHTML = `<div class="alert alert-error">${h(err.message)}</div>`;

@@ -109,7 +109,7 @@ Show action buttons based on `status`:
 | Status | User actions | Admin actions |
 |---|---|---|
 | draft | Edit name/dates, add/remove items, Submit | — |
-| pending | Cancel (`PATCH /:id/cancel`) | Process (`PATCH /:id/process`) |
+| pending | Unsubmit → back to draft (`PATCH /:id/unsubmit`), Cancel permanently (`PATCH /:id/cancel`) | Process (`PATCH /:id/process`) |
 | processing | (read only) | Adjust qty per item (`PATCH /:id/items/:itemId`), Assign handler (`PATCH /:id/assign`), Ready (`PATCH /:id/ready`), Cancel |
 | ready_for_pickup | Pickup (`PATCH /:id/pickup`) | Pickup (`PATCH /:id/pickup`), Cancel |
 | in_lend | Submit Conditions + then Return | Assign handler (`PATCH /:id/assign`) |
@@ -119,10 +119,14 @@ Show action buttons based on `status`:
 **Admin: process step**
 `PATCH /requests/:id/process` with `{ confirmed_pickup_datetime?, admin_note? }` — the API auto-approves all items at `quantity_requested`. Admin then adjusts each item individually via `PATCH /requests/:id/items/:itemId` with `{ quantity_approved }` (0 = reject item).
 
-**Condition report** (required before return)
-- `GET /requests/:id/conditions` — check if already submitted
+**Admin: ready step**
+`PATCH /requests/:id/ready` with `{ confirmed_pickup_datetime, admin_note? }` — **`confirmed_pickup_datetime` is required**. Use `GET /slots?service_type=borrow` + `GET /holidays` to build the date/time picker (same slot rules as the user's original request). If the admin picks a different datetime than `requested_pickup_datetime`, the user is automatically notified of the change before the standard "ready for pickup" notification is sent. `pickup_timeout_at` is set to `confirmed_pickup_datetime + 7 days`.
+
+**Condition report** (required before return — backend enforces this)
+- `GET /requests/:id/conditions` — check if already submitted (use `condition_reported_at` on the request object to gate the Return button)
 - `POST /requests/:id/conditions` with `{ conditions: [{ borrow_request_item_id, condition_type, note? }] }`
-- If nothing is wrong, send `conditions: []` (empty array)
+- If nothing is wrong, send `conditions: []` (empty array) — still required, this is what unlocks the return step
+- `POST /requests/:id/returns` will return `400` if condition report has never been submitted
 
 **Return submission**
 1. Upload photo: `POST /upload/presign` → `PUT /upload/photo/:r2Key`
@@ -251,9 +255,9 @@ Step 3: `POST /donations/:id/submit`
 ## Admin-Only Pages
 
 ### Admin: Returns Queue
-- `GET /returns?status=pending` — list pending returns
-- `GET /returns/:id` — detail + conditions array + photo
-- `PATCH /returns/:id/confirm` with `{ items: [{ item_id, quantity_returned, quantity_to_repair? }] }` for every item
+- `GET /returns?status=pending` — list pending returns. Each row includes `request_name`, `project_name`, `requester_name`, `submitted_by_name`, `all_items_ok`
+- `GET /returns/:id` — detail includes `request_name`, `requester_name`, `conditions` array, and `items` array. Use `items` to pre-populate the confirm form (each entry has `item_id`, `item_name`, `item_unit`, `quantity_approved`)
+- `PATCH /returns/:id/confirm` with `{ items: [{ item_id, quantity_returned, quantity_to_repair? }] }` for every item in the request
 
 ### Admin: Users
 - `GET /users` — list all users

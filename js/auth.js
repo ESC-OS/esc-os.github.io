@@ -1,7 +1,7 @@
 import { getMe, getNotifications } from './api.js';
 import { renderNavbar } from './ui.js';
 
-const LOGIN_PAGE = 'login.html';
+const LOGIN_PAGE   = 'login.html';
 const PROFILE_PAGE = 'profile.html';
 
 function currentPage() {

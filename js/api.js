@@ -4,6 +4,7 @@ function getToken() {
   return localStorage.getItem('token');
 }
 
+
 async function req(path, opts = {}) {
   const token = getToken();
   const res = await fetch(BASE + path, {
@@ -95,9 +96,10 @@ export const adjustRequestItem  = (id, itemId, d)  => api.patch(`/requests/${id}
 export const submitRequest      = (id)             => api.post(`/requests/${id}/submit`);
 export const processRequest     = (id, data)       => api.patch(`/requests/${id}/process`, data);
 export const assignRequest      = (id, userId)     => api.patch(`/requests/${id}/assign`, { user_id: userId });
-export const markReady          = (id)             => api.patch(`/requests/${id}/ready`);
+export const markReady          = (id, data)       => api.patch(`/requests/${id}/ready`, data);
 export const confirmPickup      = (id, data)       => api.patch(`/requests/${id}/pickup`, data);
 export const cancelRequest      = (id)             => api.patch(`/requests/${id}/cancel`);
+export const unsubmitRequest    = (id)             => api.patch(`/requests/${id}/unsubmit`);
 export const getConditions      = (id)             => api.get(`/requests/${id}/conditions`);
 export const submitConditions   = (id, data)       => api.post(`/requests/${id}/conditions`, data);
 export const getRequestReturns  = (id)             => api.get(`/requests/${id}/returns`);
@@ -174,11 +176,26 @@ export const deleteHoliday    = (id)             => api.delete(`/holidays/${id}`
 export const getCalendar      = ()               => api.get('/calendar');
 export const getStatus        = ()               => api.get('/status');
 
+// Fetch a photo with auth and return a blob object URL (for use in <img src>)
+const _photoCache = new Map();
+export async function fetchPhotoUrl(key) {
+  if (!key) return null;
+  if (_photoCache.has(key)) return _photoCache.get(key);
+  const token = getToken();
+  const res = await fetch(`${BASE}/upload/photo/${key}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) return null;
+  const url = URL.createObjectURL(await res.blob());
+  _photoCache.set(key, url);
+  return url;
+}
+
 // Upload — presign → PUT binary → use r2Key
 export async function uploadPhoto(file) {
   const token = getToken();
   const presign = await api.post('/upload/presign');
-  const { r2Key, uploadPath } = presign.data;
+  const { r2Key, uploadPath } = presign.data ?? presign;
   await fetch(BASE + uploadPath, {
     method: 'PUT',
     headers: {

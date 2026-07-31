@@ -1,14 +1,14 @@
 import { requireAuth } from '../auth.js';
 import {
-  getRequest, getRequestReturns, getNotifications,
+  getRequest, getRequestReturns, getReturn, getNotifications,
   addRequestItem, removeRequestItem, adjustRequestItem,
-  submitRequest, cancelRequest, processRequest, confirmPickup,
-  getConditions, submitConditions, submitReturn, uploadPhoto, photoUrl,
+  submitRequest, cancelRequest, unsubmitRequest, processRequest, markReady, confirmPickup,
+  getConditions, submitConditions, submitReturn, confirmReturn, uploadPhoto,
   updateRequest, getSlots,
 } from '../api.js';
 import {
   h, statusBadge, formatDate, formatDateTime, formatCountdown,
-  renderNavbar, showError, openModal,
+  renderNavbar, showError, openModal, loadAuthPhotos,
 } from '../ui.js';
 
 function toDateStr(d) {
@@ -37,7 +37,7 @@ async function init() {
   async function renderPage() {
     app.innerHTML = '<div class="spinner">กำลังโหลด…</div>';
 
-    let request, returns, conditions;
+    let request, returns, conditions, returnDetail = null;
     try {
       const [reqRes, retRes, condRes] = await Promise.all([
         getRequest(id),
@@ -47,6 +47,13 @@ async function init() {
       request    = reqRes?.data;
       returns    = retRes?.data    ?? [];
       conditions = condRes?.data   ?? [];
+
+      if (request?.status === 'returned' && user.role === 'admin') {
+        const pending = returns.find(r => r.status === 'pending');
+        if (pending) {
+          returnDetail = await getReturn(pending.id).then(r => r?.data ?? r).catch(() => null);
+        }
+      }
     } catch (err) {
       app.innerHTML = `<div class="alert alert-error">${h(err.message)}</div>`;
       return;
@@ -74,7 +81,7 @@ async function init() {
     let uniquePickupDates = [];
     let uniqueReturnDates = [];
 
-    if (status === 'draft' && isOwner) {
+    if ((status === 'draft' && isOwner) || (status === 'processing' && isAdmin)) {
       const DAY_NUM = { monday:1, tuesday:2, wednesday:3, thursday:4, friday:5, saturday:6, sunday:0 };
       const slotsRes = await getSlots('borrow').catch(() => ({ data: [] }));
       const active = (slotsRes?.data ?? []).filter(s => s.is_active);
@@ -96,10 +103,12 @@ async function init() {
         if (allowedDays.has(d.getDay())) uniquePickupDates.push(toDateStr(new Date(d)));
       }
 
-      // Return: tomorrow → +90 days on slot days (same slot-day rule, backend validates)
-      const retEnd = new Date(); retEnd.setDate(retEnd.getDate() + 90);
-      for (let d = new Date(start); d <= retEnd; d.setDate(d.getDate() + 1)) {
-        if (allowedDays.has(d.getDay())) uniqueReturnDates.push(toDateStr(new Date(d)));
+      if (status === 'draft' && isOwner) {
+        // Return: tomorrow → +90 days on slot days (same slot-day rule, backend validates)
+        const retEnd = new Date(); retEnd.setDate(retEnd.getDate() + 90);
+        for (let d = new Date(start); d <= retEnd; d.setDate(d.getDate() + 1)) {
+          if (allowedDays.has(d.getDay())) uniqueReturnDates.push(toDateStr(new Date(d)));
+        }
       }
     }
 
@@ -116,6 +125,7 @@ async function init() {
         <thead><tr>
           <th style="width:7rem">รหัส</th>
           <th>ชื่ออุปกรณ์</th>
+          ${canEdit ? '<th style="width:6rem">ตำแหน่ง</th>' : ''}
           <th style="text-align:center;width:6rem">จำนวนขอ</th>
           ${showApproved ? '<th style="text-align:center;width:6rem">จำนวนอนุมัติ</th>' : ''}
           <th style="width:5rem">หน่วย</th>
@@ -133,12 +143,16 @@ async function init() {
                 <td>
                   <div style="display:flex;align-items:center;gap:.5rem">
                     ${it.photo_r2_key
-                      ? `<img src="${h(photoUrl(it.photo_r2_key))}" alt=""
+                      ? `<img data-photo-key="${h(it.photo_r2_key)}" alt=""
                           style="width:32px;height:32px;object-fit:cover;border-radius:4px;flex-shrink:0;border:1px solid var(--border)">`
                       : `<div style="width:32px;height:32px;border-radius:4px;background:var(--surface-hover,#f3f4f6);display:flex;align-items:center;justify-content:center;font-size:.9em;flex-shrink:0;border:1px solid var(--border)">📦</div>`}
                     <span>${h(it.item_name || it.name || '-')}</span>
                   </div>
                 </td>
+                ${canEdit ? `
+                  <td style="font-family:monospace;font-size:.85em;color:${it.item_stock_location ? 'var(--text)' : 'var(--text-muted)'}">
+                    ${h(it.item_stock_location || '-')}
+                  </td>` : ''}
                 ${canEditDraft ? `
                   <td style="text-align:center">
                     <span class="qty-text">${h(String(it.quantity_requested ?? '-'))}</span>
@@ -160,8 +174,9 @@ async function init() {
                         data-item-id="${h(it.item_id || it.id)}"
                         value="${it.quantity_approved ?? it.quantity_requested}"
                         min="0" max="${it.quantity_requested}">
-                      <button class="btn btn-sm btn-secondary do-adj"
-                        data-item-id="${h(it.item_id || it.id)}">บันทึก</button>
+                      <button class="adj-tick do-adj"
+                        data-item-id="${h(it.item_id || it.id)}"
+                        title="บันทึก">✓</button>
                     </div>
                   </td>` : ''}
                 ${canRemove ? `
@@ -277,58 +292,68 @@ async function init() {
             <textarea class="form-textarea" id="process-note" style="min-height:60px"
               placeholder="หมายเหตุถึงผู้ขอ"></textarea>
           </div>
-          <button class="btn btn-primary" id="btn-process">เริ่มดำเนินการ</button>
+          <button class="btn btn-primary" id="btn-process" style="margin-top:.75rem">เริ่มดำเนินการ</button>
         </div>`;
     }
 
     // ── Condition report (in_lend + owner) ───────────────────────────────────
     function conditionReportHtml() {
       if (!(isOwner && inLendStatuses.includes(status) && approvedItems.length > 0)) return '';
-      const prevConds = conditions.filter(c => c.condition_type && c.condition_type !== 'ok');
+      const prevConds        = conditions.filter(c => c.condition_type && c.condition_type !== 'ok');
+      const prevById         = new Map(prevConds.map(c => [c.borrow_request_item_id, c]));
+      const preIssueItems    = approvedItems.filter(it => prevById.has(it.id));
+      const availableItems   = approvedItems.filter(it => !prevById.has(it.id));
+
+      function issueRowHtml(it, existing) {
+        const ct   = existing?.condition_type || 'missing';
+        const note = existing?.note || '';
+        const qty  = h(String(it.quantity_approved));
+        const unit = h(it.unit || 'ชิ้น');
+        return `
+          <div class="cond-issue-row" data-req-item-id="${h(it.id)}"
+            style="display:flex;gap:.5rem;align-items:center;padding:.5rem .75rem;background:var(--bg-muted,#f5f5f5);border-radius:.375rem;border:1px solid var(--border)">
+            <span style="flex:1;font-size:.9em">${h(it.item_name)}
+              <span style="color:var(--text-muted);font-size:.85em">(${qty} ${unit})</span>
+            </span>
+            <select class="form-select cond-type" data-req-item-id="${h(it.id)}" style="width:9rem;font-size:.85em">
+              <option value="missing" ${ct === 'missing' ? 'selected' : ''}>สูญหาย</option>
+              <option value="broken"  ${ct === 'broken'  ? 'selected' : ''}>ชำรุด</option>
+            </select>
+            <input type="text" class="form-input cond-note" data-req-item-id="${h(it.id)}"
+              value="${h(note)}" placeholder="เช่น 2 จาก ${qty} ${unit}"
+              style="width:13rem;font-size:.85em">
+            <button class="cond-remove-btn" type="button"
+              data-req-item-id="${h(it.id)}" data-name="${h(it.item_name)}"
+              data-qty="${qty}" data-unit="${unit}"
+              style="padding:.2rem .5rem;font-size:.9em;color:var(--danger,#dc2626);background:none;border:1px solid var(--border);border-radius:.25rem;cursor:pointer">✕</button>
+          </div>`;
+      }
+
       return `
         <div class="card">
           <div class="card-title">รายงานสภาพอุปกรณ์</div>
-          <p class="form-hint" style="margin-bottom:.75rem">รายงานหากมีอุปกรณ์สูญหายหรือชำรุด (ส่งซ้ำจะแทนที่ข้อมูลเดิม)</p>
-          ${prevConds.length > 0 ? `
-            <div class="alert alert-warning" style="margin-bottom:.75rem">
-              รายงานล่าสุด: ${prevConds.map(c =>
-                `${h(c.item_name || '')} (${c.condition_type === 'missing' ? 'สูญหาย' : 'ชำรุด'})`
-              ).join(', ')}
-            </div>` : ''}
+          <p class="form-hint" style="margin-bottom:.75rem">
+            เพิ่มเฉพาะรายการที่มีปัญหา และระบุจำนวนที่มีปัญหาในหมายเหตุ
+            เจ้าหน้าที่จะยืนยันจำนวนจริงเมื่อรับคืน
+          </p>
           <div id="cond-msg"></div>
-          <div class="form-group">
-            <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
-              <input type="checkbox" id="all-ok-check">
-              <span>ทุกรายการปกติ</span>
-            </label>
+          <div id="cond-issue-list" style="display:flex;flex-direction:column;gap:.5rem;margin-bottom:.75rem">
+            ${preIssueItems.map(it => issueRowHtml(it, prevById.get(it.id))).join('')}
           </div>
-          <div id="cond-items-wrap">
-            <table class="req-items-table" style="margin-bottom:.75rem">
-              <thead><tr><th>อุปกรณ์</th><th>จำนวน</th><th>สภาพ</th><th>หมายเหตุ</th></tr></thead>
-              <tbody>
-                ${approvedItems.map(it => `
-                  <tr>
-                    <td>${h(it.item_name)}</td>
-                    <td>${h(String(it.quantity_approved))}</td>
-                    <td>
-                      <select class="form-select cond-type"
-                        data-req-item-id="${h(it.id)}"
-                        style="font-size:.85em;padding:.25rem">
-                        <option value="ok">ปกติ</option>
-                        <option value="missing">สูญหาย</option>
-                        <option value="broken">ชำรุด</option>
-                      </select>
-                    </td>
-                    <td>
-                      <input type="text" class="form-input cond-note"
-                        data-req-item-id="${h(it.id)}"
-                        placeholder="หมายเหตุ"
-                        style="font-size:.85em;padding:.25rem">
-                    </td>
-                  </tr>`).join('')}
-              </tbody>
-            </table>
+          <div id="cond-add-wrap" class="form-group" style="display:flex;gap:.5rem;align-items:center;margin-bottom:.75rem${availableItems.length === 0 ? ';display:none' : ''}">
+            <select id="cond-add-select" class="form-select" style="flex:1">
+              <option value="">— เลือกรายการที่มีปัญหา —</option>
+              ${availableItems.map(it => `
+                <option value="${h(it.id)}"
+                  data-name="${h(it.item_name)}"
+                  data-qty="${h(String(it.quantity_approved))}"
+                  data-unit="${h(it.unit || 'ชิ้น')}">
+                  ${h(it.item_name)} (${h(String(it.quantity_approved))} ${h(it.unit || 'ชิ้น')})
+                </option>`).join('')}
+            </select>
+            <button class="btn btn-secondary" id="cond-add-btn" type="button">+ เพิ่ม</button>
           </div>
+          <p class="form-hint" style="margin-bottom:.75rem">หากทุกรายการปกติ ไม่ต้องเพิ่มรายการใด กดบันทึกได้เลย</p>
           <button class="btn btn-secondary" id="btn-conditions">บันทึกรายงานสภาพ</button>
         </div>`;
     }
@@ -336,17 +361,112 @@ async function init() {
     // ── Return section (in_lend + owner) ─────────────────────────────────────
     function returnFormHtml() {
       if (!(isOwner && inLendStatuses.includes(status))) return '';
+      const condDone = !!request.condition_reported_at;
       return `
         <div class="card">
           <div class="card-title">คืนอุปกรณ์</div>
+          ${!condDone ? `<div class="alert alert-warning" style="margin-bottom:.75rem">กรุณาบันทึกรายงานสภาพอุปกรณ์ก่อนดำเนินการคืน</div>` : ''}
           <div class="return-form">
             <div class="form-group">
               <label class="form-label">รูปถ่ายการคืน <span class="form-required">*</span></label>
-              <input type="file" accept="image/*" id="return-photo" class="return-photo">
+              <input type="file" accept="image/*" id="return-photo" class="return-photo" ${!condDone ? 'disabled' : ''}>
+            </div>
+            <div class="form-group" style="margin-top:.75rem">
+              <label style="display:flex;align-items:center;gap:.5rem;cursor:${condDone ? 'pointer' : 'default'}">
+                <input type="checkbox" id="return-all-ok" checked ${!condDone ? 'disabled' : ''}>
+                <span>อุปกรณ์ทุกชิ้นครบและสภาพดี</span>
+              </label>
+            </div>
+            <div class="form-group" style="margin-top:.5rem">
+              <label class="form-label">หมายเหตุ (ถ้ามี)</label>
+              <textarea id="return-note" class="form-input" rows="2" style="resize:vertical" placeholder="เช่น มีรอยขีดข่วนเล็กน้อย" ${!condDone ? 'disabled' : ''}></textarea>
             </div>
             <div id="return-msg"></div>
-            <button class="btn btn-primary" id="btn-return">คืนอุปกรณ์</button>
+            <button class="btn btn-primary" id="btn-return" ${!condDone ? 'disabled' : ''}>คืนอุปกรณ์</button>
           </div>
+        </div>`;
+    }
+
+    // ── Admin: confirm return (returned + admin) ──────────────────────────────
+    function adminConfirmReturnHtml() {
+      if (!(isAdmin && status === 'returned')) return '';
+      const pending = returns.find(r => r.status === 'pending');
+      if (!pending) return '';
+      const condProblems = conditions.filter(c => c.condition_type);
+      const confirmItems = (returnDetail?.items ?? approvedItems).map(it => ({
+        item_id:            it.item_id ?? it.id,
+        item_name:          it.item_name ?? it.name ?? '-',
+        item_unit:          it.item_unit ?? it.unit ?? '',
+        quantity_approved:  it.quantity_approved ?? 0,
+        quantity_returned:  it.quantity_returned  ?? null,
+        quantity_to_repair: it.quantity_to_repair ?? null,
+      }));
+      return `
+        <div class="card">
+          <div class="card-title">ยืนยันการรับคืน</div>
+          ${pending.photo_r2_key
+            ? `<img data-photo-key="${h(pending.photo_r2_key)}" alt="รูปการคืน"
+                style="max-width:300px;width:100%;border-radius:8px;margin-bottom:1rem;display:block">`
+            : ''}
+          <div class="info-row">
+            <span class="info-label">สภาพที่แจ้ง:</span>
+            ${pending.all_items_ok === 1 || pending.all_items_ok === true
+              ? '<span style="color:var(--success)">ปกติทุกชิ้น</span>'
+              : '<span style="color:var(--error);font-weight:600">มีปัญหา</span>'}
+          </div>
+          ${pending.note ? `<div class="info-row"><span class="info-label">หมายเหตุ:</span> ${h(pending.note)}</div>` : ''}
+          ${condProblems.length > 0 ? `
+            <div class="alert alert-warning" style="margin:.75rem 0">
+              <strong>รายงานปัญหาจากผู้ยืม:</strong>
+              <ul style="margin:.5rem 0 0;padding-left:1.2rem">
+                ${condProblems.map(c => `
+                  <li>${h(c.item_name ?? '-')}
+                    ${c.condition_type === 'missing'
+                      ? ' — <span style="color:var(--error)">สูญหาย</span>'
+                      : ' — <span style="color:var(--warning,#d97706)">ชำรุด</span>'}
+                    ${c.note ? `: ${h(c.note)}` : ''}
+                  </li>`).join('')}
+              </ul>
+            </div>` : ''}
+          <p class="form-hint" style="margin-bottom:1rem">
+            ระบุจำนวนที่รับคืนจริงและจำนวนที่ต้องส่งซ่อม — จำนวนที่หายไปจะถูกหักจากสต็อก
+          </p>
+          <div id="confirm-return-error"></div>
+          <form id="admin-confirm-form">
+            <div class="table-wrap" style="margin-bottom:1rem">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>ชื่ออุปกรณ์</th>
+                    <th>อนุมัติ</th>
+                    <th>รับคืนได้ <span class="form-required">*</span></th>
+                    <th>ส่งซ่อม</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${confirmItems.map(it => `
+                    <tr>
+                      <td>${h(it.item_name)}${it.item_unit ? ` <span style="color:var(--text-muted);font-size:.82em">(${h(it.item_unit)})</span>` : ''}</td>
+                      <td>${it.quantity_approved}</td>
+                      <td>
+                        <input type="number" class="form-input qty-confirm-returned" min="0"
+                          max="${it.quantity_approved}"
+                          value="${it.quantity_returned ?? it.quantity_approved}"
+                          data-item-id="${h(String(it.item_id))}"
+                          data-max="${it.quantity_approved}"
+                          style="width:80px">
+                      </td>
+                      <td>
+                        <input type="number" class="form-input qty-confirm-repair" min="0"
+                          value="${it.quantity_to_repair ?? 0}"
+                          style="width:80px">
+                      </td>
+                    </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>
+            <button type="submit" class="btn btn-primary">ยืนยันการรับคืน</button>
+          </form>
         </div>`;
     }
 
@@ -364,7 +484,7 @@ async function init() {
                   r.status === 'confirmed' ? '✓ ยืนยันแล้ว' : 'รอยืนยัน'
                 }</strong></div>
                 ${r.admin_note ? `<div class="alert alert-info" style="margin-top:.4rem">หมายเหตุเจ้าหน้าที่: ${h(r.admin_note)}</div>` : ''}
-                ${r.photo_r2_key ? `<div style="margin-top:.5rem"><a href="${h(photoUrl(r.photo_r2_key))}" target="_blank" class="btn btn-sm btn-secondary">ดูรูปถ่าย</a></div>` : ''}
+                ${r.photo_r2_key ? `<div style="margin-top:.5rem"><img data-photo-key="${h(r.photo_r2_key)}" alt="รูปการคืน" style="max-width:260px;width:100%;border-radius:6px;display:block"></div>` : ''}
               </div>`).join('')}
           </div>
         </div>`;
@@ -431,12 +551,17 @@ async function init() {
       <div class="actions-bar" style="margin-bottom:1rem">
         ${isOwner && status === 'draft'
           ? '<button class="btn btn-danger" id="btn-cancel">ยกเลิกคำขอ</button>' : ''}
-        ${isOwner && status === 'pending'
-          ? '<button class="btn btn-secondary" id="btn-cancel">ยกเลิกการส่ง (กลับเป็นร่าง)</button>' : ''}
+        ${isOwner && status === 'pending' ? `
+          <button class="btn btn-secondary" id="btn-unsubmit">ยกเลิกการส่ง (กลับเป็นร่าง)</button>
+          <button class="btn btn-danger"    id="btn-cancel">ยกเลิกคำขอ</button>
+        ` : ''}
+        ${isAdmin && status === 'processing' ? `
+          <button class="btn btn-success" id="btn-ready" disabled>พร้อมรับ</button>
+          <button class="btn btn-danger"  id="btn-cancel">ยกเลิก</button>
+        ` : ''}
         ${(isOwner || isAdmin) && status === 'ready_for_pickup'
           ? '<button class="btn btn-success" id="btn-pickup">รับอุปกรณ์</button>' : ''}
-        ${isOwner && inLendStatuses.includes(status)
-          ? '<button class="btn btn-primary" id="btn-open-return">คืนอุปกรณ์</button>' : ''}
+        ${''/* return is handled by the inline card below */}
       </div>
 
       <!-- Items card -->
@@ -450,7 +575,10 @@ async function init() {
       ${submitSectionHtml()}
       ${conditionReportHtml()}
       ${returnFormHtml()}
+      ${adminConfirmReturnHtml()}
       ${returnsHistoryHtml()}`;
+
+    loadAuthPhotos(app);
 
     // ── Error/success helpers ────────────────────────────────────────────────
     function errBox(msg) {
@@ -465,32 +593,13 @@ async function init() {
       }
     }
 
-    // ── Draft handlers: dropdown calendars + time picker + submit ───────────
-    if (isOwner && status === 'draft') {
-      const timeBtnsDiv       = document.getElementById('time-btns');
-      const timeGroup         = document.getElementById('time-group');
-      const returnTimeBtnsDiv = document.getElementById('return-time-btns');
-      const returnTimeGroup   = document.getElementById('return-time-group');
-      const pickupDrop        = document.getElementById('pickup-cal-drop');
-      const returnDrop        = document.getElementById('return-cal-drop');
-      const pickupBtn         = document.getElementById('btn-pick-date');
-      const returnBtn         = document.getElementById('btn-pick-return');
+    // ── Shared calendar constants & renderer (used by draft + admin ready modal)
+    const todayStr  = toDateStr(new Date());
+    const MONTHS_TH = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
+                       'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+    const DOW_TH = ['อา','จ','อ','พ','พฤ','ศ','ส'];
 
-      let pickedTime       = '';
-      let pickedReturnTime = '';
-      let pickedDate   = request.requested_pickup_datetime ? request.requested_pickup_datetime.slice(0, 10) : '';
-      let pickedReturn = request.requested_return_datetime ? request.requested_return_datetime.slice(0, 10) : '';
-
-      const availSet       = new Set(uniquePickupDates);
-      const returnAvailSet = new Set(uniqueReturnDates);
-      const todayStr = toDateStr(new Date());
-
-      const MONTHS_TH = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
-                         'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
-      const DOW_TH = ['อา','จ','อ','พ','พฤ','ศ','ส'];
-
-      // ── Shared calendar renderer ──────────────────────────────────────────
-      function buildCalHtml(cy, cm, selected, isAvailFn, canPrev, canNext) {
+    function buildCalHtml(cy, cm, selected, isAvailFn, canPrev, canNext) {
         const firstDow = new Date(cy, cm, 1).getDay();
         const daysInMo = new Date(cy, cm + 1, 0).getDate();
         const navBtn = (cls, label, enabled) =>
@@ -534,8 +643,10 @@ async function init() {
               ${hdr}${cells}
             </div>
           </div>`;
-      }
+    }
 
+    // ── Draft handlers: dropdown calendars + time picker + submit ───────────
+    if (isOwner && status === 'draft') {
       function closeAll() {
         if (pickupDrop) pickupDrop.style.display = 'none';
         if (returnDrop) returnDrop.style.display = 'none';
@@ -783,30 +894,74 @@ async function init() {
     });
 
     // ── Adjust quantity_approved (processing, admin) ──────────────────────────
+    function syncReadyBtn() {
+      const readyBtn = document.getElementById('btn-ready');
+      if (!readyBtn) return;
+      const ticks = document.querySelectorAll('.do-adj');
+      const allDone = ticks.length > 0 && [...ticks].every(b => b.dataset.confirmed === '1');
+      readyBtn.disabled = !allDone;
+    }
+
     document.querySelectorAll('.do-adj').forEach(btn => {
       btn.addEventListener('click', async () => {
+        // Untick: reset highlight without hitting the API
+        if (btn.dataset.confirmed === '1') {
+          const row = btn.closest('tr');
+          row.style.background  = '';
+          btn.style.background  = '';
+          btn.style.borderColor = '';
+          btn.style.color       = '';
+          btn.dataset.confirmed = '0';
+          syncReadyBtn();
+          return;
+        }
+
         const input = document.querySelector(`.adj-qty[data-item-id="${btn.dataset.itemId}"]`);
         const qty   = parseInt(input?.value);
         if (isNaN(qty)) return;
+        btn.disabled = true;
         try {
           await adjustRequestItem(id, btn.dataset.itemId, { quantity_approved: qty });
-          successBox('บันทึกจำนวนอนุมัติแล้ว');
-        } catch (err) { errBox(err.message); }
+          const row      = btn.closest('tr');
+          const approved = qty > 0;
+          row.style.transition  = 'background .25s';
+          row.style.background  = approved ? 'var(--success-bg)' : 'var(--error-bg)';
+          btn.style.background  = approved ? 'var(--success)' : 'var(--error)';
+          btn.style.borderColor = approved ? 'var(--success)' : 'var(--error)';
+          btn.style.color       = '#fff';
+          btn.dataset.confirmed = '1';
+          btn.disabled          = false;
+          syncReadyBtn();
+        } catch (err) {
+          errBox(err.message);
+          btn.disabled = false;
+        }
       });
+    });
+
+    // ── Unsubmit (pending → draft) ────────────────────────────────────────────
+    document.getElementById('btn-unsubmit')?.addEventListener('click', async () => {
+      const close = openModal('ยกเลิกการส่ง', `
+        <p>คำขอจะกลับไปเป็นร่างและสามารถแก้ไขแล้วส่งใหม่ได้อีกครั้ง</p>
+        <div class="modal-actions" style="display:flex;gap:.75rem;margin-top:1rem;justify-content:flex-end">
+          <button class="btn btn-secondary" id="modal-cancel">ยกเลิก</button>
+          <button class="btn btn-primary"   id="modal-confirm">กลับเป็นร่าง</button>
+        </div>`);
+      document.getElementById('modal-cancel').onclick  = close;
+      document.getElementById('modal-confirm').onclick = async () => {
+        close();
+        try { await unsubmitRequest(id); await renderPage(); }
+        catch (err) { errBox(err.message); }
+      };
     });
 
     // ── Cancel request ────────────────────────────────────────────────────────
     document.getElementById('btn-cancel')?.addEventListener('click', async () => {
-      const isPending = status === 'pending';
-      const title = isPending ? 'ยกเลิกการส่งคำขอ' : 'ยืนยันการยกเลิกคำขอ';
-      const body  = isPending
-        ? '<p>ยกเลิกการส่ง คำขอจะกลับไปเป็นร่างและสามารถแก้ไขได้อีก</p>'
-        : '<p>คุณต้องการยกเลิกคำขอนี้ใช่หรือไม่? การดำเนินการนี้ไม่สามารถย้อนกลับได้</p>';
-      const close = openModal(title, `
-        ${body}
+      const close = openModal('ยืนยันการยกเลิกคำขอ', `
+        <p>คุณต้องการยกเลิกคำขอนี้ใช่หรือไม่? การดำเนินการนี้ไม่สามารถย้อนกลับได้</p>
         <div class="modal-actions" style="display:flex;gap:.75rem;margin-top:1rem;justify-content:flex-end">
           <button class="btn btn-secondary" id="modal-cancel">ไม่ยกเลิก</button>
-          <button class="btn btn-danger" id="modal-confirm">${isPending ? 'ยกเลิกการส่ง' : 'ยืนยันยกเลิก'}</button>
+          <button class="btn btn-danger" id="modal-confirm">ยืนยันยกเลิก</button>
         </div>`);
       document.getElementById('modal-cancel').onclick  = close;
       document.getElementById('modal-confirm').onclick = async () => {
@@ -823,6 +978,111 @@ async function init() {
         await processRequest(id, { admin_note: note || undefined });
         await renderPage();
       } catch (err) { errBox(err.message); }
+    });
+
+    // ── Mark ready (processing → ready_for_pickup) ───────────────────────────
+    document.getElementById('btn-ready')?.addEventListener('click', () => {
+      const preStr  = request.confirmed_pickup_datetime || request.requested_pickup_datetime || '';
+      const preDate = preStr.slice(0, 10);
+      const preTime = preStr.slice(11, 16);
+      const availSet2 = new Set(uniquePickupDates);
+
+      let modalDate = availSet2.has(preDate) ? preDate : (uniquePickupDates[0] || '');
+      let modalTime = (modalDate && timesByDay[new Date(modalDate + 'T00:00:00').getDay()]?.includes(preTime))
+        ? preTime : '';
+
+      const initD = modalDate ? new Date(modalDate + 'T00:00:00') : new Date();
+      let mcy = initD.getFullYear(), mcm = initD.getMonth();
+
+      const close = openModal('ยืนยันวันรับอุปกรณ์', `
+        <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:.75rem">
+          ยืนยันหรือแก้ไขวันและเวลานัดรับ — ผู้ขอจะได้รับการแจ้งเตือน
+        </p>
+        <div class="form-group" style="margin-bottom:.75rem">
+          <label class="form-label">วันรับ <span class="form-required">*</span></label>
+          <div id="ready-cal"></div>
+        </div>
+        <div id="ready-time-group" style="margin-bottom:.75rem;${modalDate ? '' : 'display:none'}">
+          <label class="form-label">เวลารับ <span class="form-required">*</span></label>
+          <div id="ready-time-btns" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.3rem"></div>
+        </div>
+        <div id="ready-error"></div>
+        <div class="modal-actions" style="display:flex;gap:.75rem;margin-top:1rem;justify-content:flex-end">
+          <button class="btn btn-secondary" id="modal-cancel">ยกเลิก</button>
+          <button class="btn btn-success"   id="modal-confirm">ยืนยันพร้อมรับ</button>
+        </div>`);
+
+      const onStyle  = `background:var(--primary);color:#fff;border-color:var(--primary);font-weight:700;box-shadow:0 2px 6px rgba(123,23,40,.25)`;
+      const offStyle = `background:#fff;color:var(--text);border-color:var(--border-strong)`;
+
+      function renderReadyTimeBtns(dayOfWeek) {
+        const container = document.getElementById('ready-time-btns');
+        if (!container) return;
+        const times = timesByDay[dayOfWeek] || [];
+        container.innerHTML = times.length
+          ? times.map(t => `
+              <button type="button" class="ready-time-btn" data-time="${t}"
+                style="padding:.45rem 1.4rem;border-radius:999px;border:1.5px solid;font-size:.95em;cursor:pointer;transition:all .15s;${t === modalTime ? onStyle : offStyle}">
+                ${t}
+              </button>`).join('')
+          : '<span style="color:var(--text-muted);font-size:.88em">ไม่มีเวลาในวันนี้</span>';
+        container.querySelectorAll('.ready-time-btn').forEach(b => {
+          b.addEventListener('click', () => {
+            modalTime = b.dataset.time;
+            container.querySelectorAll('.ready-time-btn').forEach(tb => {
+              tb.style.cssText = `padding:.45rem 1.4rem;border-radius:999px;border:1.5px solid;font-size:.95em;cursor:pointer;transition:all .15s;${offStyle}`;
+            });
+            b.style.cssText = `padding:.45rem 1.4rem;border-radius:999px;border:1.5px solid;font-size:.95em;cursor:pointer;transition:all .15s;${onStyle}`;
+          });
+        });
+      }
+
+      function mountReadyCal() {
+        const calEl = document.getElementById('ready-cal');
+        if (!calEl) return;
+        const fa = uniquePickupDates.length ? new Date(uniquePickupDates[0] + 'T00:00:00') : null;
+        const la = uniquePickupDates.length ? new Date(uniquePickupDates[uniquePickupDates.length - 1] + 'T00:00:00') : null;
+        const canPrev = fa && (mcy * 12 + mcm) > (fa.getFullYear() * 12 + fa.getMonth());
+        const canNext = la && (mcy * 12 + mcm) < (la.getFullYear() * 12 + la.getMonth());
+        calEl.innerHTML = buildCalHtml(mcy, mcm, modalDate, ds => availSet2.has(ds), canPrev, canNext);
+        calEl.querySelector('.cal-prev')?.addEventListener('click', () => {
+          mcm--; if (mcm < 0) { mcm = 11; mcy--; } mountReadyCal();
+        });
+        calEl.querySelector('.cal-next')?.addEventListener('click', () => {
+          mcm++; if (mcm > 11) { mcm = 0; mcy++; } mountReadyCal();
+        });
+        calEl.querySelectorAll('.cpick[data-date]').forEach(cell => {
+          cell.addEventListener('click', () => {
+            if (!cell.dataset.date) return;
+            modalDate = cell.dataset.date;
+            modalTime = '';
+            mountReadyCal();
+            renderReadyTimeBtns(new Date(modalDate + 'T00:00:00').getDay());
+            const tg = document.getElementById('ready-time-group');
+            if (tg) tg.style.display = '';
+          });
+        });
+      }
+
+      mountReadyCal();
+      if (modalDate) renderReadyTimeBtns(new Date(modalDate + 'T00:00:00').getDay());
+
+      document.getElementById('modal-cancel').onclick = close;
+      document.getElementById('modal-confirm').onclick = async () => {
+        const errEl = document.getElementById('ready-error');
+        if (!modalDate) { errEl.innerHTML = '<div class="alert alert-error">กรุณาเลือกวันรับ</div>'; return; }
+        if (!modalTime) { errEl.innerHTML = '<div class="alert alert-error">กรุณาเลือกเวลารับ</div>'; return; }
+        const btn = document.getElementById('modal-confirm');
+        btn.disabled = true; btn.textContent = 'กำลังบันทึก…';
+        try {
+          await markReady(id, { confirmed_pickup_datetime: `${modalDate}T${modalTime}` });
+          close();
+          await renderPage();
+        } catch (err) {
+          errEl.innerHTML = `<div class="alert alert-error">${h(err.message)}</div>`;
+          btn.disabled = false; btn.textContent = 'ยืนยันพร้อมรับ';
+        }
+      };
     });
 
     // ── Confirm pickup ────────────────────────────────────────────────────────
@@ -861,79 +1121,84 @@ async function init() {
     });
 
     // ── Condition report ──────────────────────────────────────────────────────
-    const allOkCheck = document.getElementById('all-ok-check');
-    allOkCheck?.addEventListener('change', () => {
-      const wrap = document.getElementById('cond-items-wrap');
-      if (wrap) wrap.style.display = allOkCheck.checked ? 'none' : '';
+    document.getElementById('cond-add-btn')?.addEventListener('click', () => {
+      const sel = document.getElementById('cond-add-select');
+      const val = sel?.value;
+      if (!val) return;
+      const opt  = sel.querySelector(`option[value="${val}"]`);
+      if (!opt) return;
+      const name = opt.dataset.name;
+      const qty  = opt.dataset.qty;
+      const unit = opt.dataset.unit || 'ชิ้น';
+      opt.remove();
+      sel.value = '';
+      if (sel.options.length <= 1) document.getElementById('cond-add-wrap')?.style.setProperty('display','none');
+
+      const row = document.createElement('div');
+      row.className = 'cond-issue-row';
+      row.dataset.reqItemId = val;
+      row.style.cssText = 'display:flex;gap:.5rem;align-items:center;padding:.5rem .75rem;background:var(--bg-muted,#f5f5f5);border-radius:.375rem;border:1px solid var(--border)';
+      row.innerHTML = `
+        <span style="flex:1;font-size:.9em">${h(name)}
+          <span style="color:var(--text-muted);font-size:.85em">(${h(qty)} ${h(unit)})</span>
+        </span>
+        <select class="form-select cond-type" data-req-item-id="${h(val)}" style="width:9rem;font-size:.85em">
+          <option value="missing">สูญหาย</option>
+          <option value="broken">ชำรุด</option>
+        </select>
+        <input type="text" class="form-input cond-note" data-req-item-id="${h(val)}"
+          placeholder="เช่น 2 จาก ${h(qty)} ${h(unit)}" style="width:13rem;font-size:.85em">
+        <button class="cond-remove-btn" type="button"
+          data-req-item-id="${h(val)}" data-name="${h(name)}" data-qty="${h(qty)}" data-unit="${h(unit)}"
+          style="padding:.2rem .5rem;font-size:.9em;color:var(--danger,#dc2626);background:none;border:1px solid var(--border);border-radius:.25rem;cursor:pointer">✕</button>`;
+      document.getElementById('cond-issue-list')?.appendChild(row);
+    });
+
+    document.getElementById('cond-issue-list')?.addEventListener('click', e => {
+      const btn = e.target.closest('.cond-remove-btn');
+      if (!btn) return;
+      const row = btn.closest('.cond-issue-row');
+      if (!row) return;
+      const { reqItemId: val, name, qty, unit = 'ชิ้น' } = btn.dataset;
+      const sel = document.getElementById('cond-add-select');
+      if (sel) {
+        const opt = document.createElement('option');
+        opt.value = val; opt.dataset.name = name; opt.dataset.qty = qty; opt.dataset.unit = unit;
+        opt.textContent = `${name} (${qty} ${unit})`;
+        sel.appendChild(opt);
+        document.getElementById('cond-add-wrap')?.style.removeProperty('display');
+      }
+      row.remove();
     });
 
     document.getElementById('btn-conditions')?.addEventListener('click', async () => {
-      const msgEl  = document.getElementById('cond-msg');
-      const allOk  = document.getElementById('all-ok-check')?.checked ?? false;
-      let payload;
-      if (allOk) {
-        payload = { all_ok: true, items: [] };
-      } else {
-        const condItems = [...document.querySelectorAll('.cond-type')].map(sel => {
-          const reqItemId = sel.dataset.reqItemId;
-          const noteEl    = document.querySelector(`.cond-note[data-req-item-id="${reqItemId}"]`);
-          return {
-            borrow_request_item_id: reqItemId,
-            condition:              sel.value,
-            note:                   noteEl?.value || '',
-          };
-        });
-        payload = { all_ok: false, items: condItems };
-      }
+      const msgEl = document.getElementById('cond-msg');
+      const condItems = [...document.querySelectorAll('#cond-issue-list .cond-issue-row')].map(row => {
+        const reqItemId = row.dataset.reqItemId;
+        const note      = row.querySelector('.cond-note')?.value.trim();
+        return {
+          borrow_request_item_id: reqItemId,
+          condition_type:         row.querySelector('.cond-type')?.value,
+          ...(note ? { note } : {}),
+        };
+      });
+      const btn = document.getElementById('btn-conditions');
+      btn.disabled = true; btn.textContent = 'กำลังบันทึก…';
       try {
-        await submitConditions(id, payload);
-        if (msgEl) {
-          msgEl.innerHTML = '<div class="alert alert-success">บันทึกรายงานสภาพแล้ว</div>';
-          setTimeout(() => { if (msgEl) msgEl.innerHTML = ''; }, 3000);
-        }
+        await submitConditions(id, { conditions: condItems });
+        await renderPage();
       } catch (err) {
         if (msgEl) msgEl.innerHTML = `<div class="alert alert-error">${h(err.message)}</div>`;
+        btn.disabled = false; btn.textContent = 'บันทึกรายงานสภาพ';
       }
-    });
-
-    // ── Return (open modal via actions-bar button) ────────────────────────────
-    document.getElementById('btn-open-return')?.addEventListener('click', () => {
-      const close = openModal('คืนอุปกรณ์', `
-        <div class="form-group" style="margin-top:1rem">
-          <label class="form-label">รูปถ่ายการคืน <span class="form-required">*</span></label>
-          <input type="file" accept="image/*" id="return-photo-modal" class="return-photo">
-        </div>
-        <div id="return-modal-msg"></div>
-        <div class="modal-actions" style="display:flex;gap:.75rem;margin-top:1rem;justify-content:flex-end">
-          <button class="btn btn-secondary" id="modal-cancel">ยกเลิก</button>
-          <button class="btn btn-primary" id="modal-confirm">ส่งการคืน</button>
-        </div>`);
-      document.getElementById('modal-cancel').onclick  = close;
-      document.getElementById('modal-confirm').onclick = async () => {
-        const file  = document.getElementById('return-photo-modal')?.files?.[0];
-        const msgEl = document.getElementById('return-modal-msg');
-        if (!file) {
-          if (msgEl) msgEl.innerHTML = '<div class="alert alert-error">กรุณาเลือกรูปถ่าย</div>';
-          return;
-        }
-        const btn = document.getElementById('modal-confirm');
-        btn.disabled = true; btn.textContent = 'กำลังอัปโหลด…';
-        try {
-          const r2Key = await uploadPhoto(file);
-          await submitReturn(id, { photo_r2_key: r2Key });
-          close();
-          await renderPage();
-        } catch (err) {
-          if (msgEl) msgEl.innerHTML = `<div class="alert alert-error">${h(err.message)}</div>`;
-          btn.disabled = false; btn.textContent = 'ส่งการคืน';
-        }
-      };
     });
 
     // ── Inline return form (card in in_lend) ─────────────────────────────────
     document.getElementById('btn-return')?.addEventListener('click', async () => {
-      const file  = document.getElementById('return-photo')?.files?.[0];
-      const msgEl = document.getElementById('return-msg');
+      const file   = document.getElementById('return-photo')?.files?.[0];
+      const allOk  = document.getElementById('return-all-ok')?.checked ? 1 : 0;
+      const note   = document.getElementById('return-note')?.value.trim() || undefined;
+      const msgEl  = document.getElementById('return-msg');
       if (!file) {
         if (msgEl) msgEl.innerHTML = '<div class="alert alert-error">กรุณาเลือกรูปถ่าย</div>';
         return;
@@ -942,11 +1207,55 @@ async function init() {
       btn.disabled = true; btn.textContent = 'กำลังอัปโหลด…';
       try {
         const r2Key = await uploadPhoto(file);
-        await submitReturn(id, { photo_r2_key: r2Key });
+        await submitReturn(id, { photo_r2_key: r2Key, all_items_ok: allOk, note });
         await renderPage();
       } catch (err) {
         if (msgEl) msgEl.innerHTML = `<div class="alert alert-error">${h(err.message)}</div>`;
         btn.disabled = false; btn.textContent = 'คืนอุปกรณ์';
+      }
+    });
+
+    // ── Admin: confirm return ─────────────────────────────────────────────────
+    document.getElementById('admin-confirm-form')?.addEventListener('submit', async e => {
+      e.preventDefault();
+      const errEl   = document.getElementById('confirm-return-error');
+      errEl.innerHTML = '';
+      const pending = returns.find(r => r.status === 'pending');
+      if (!pending) return;
+
+      const retInputs = [...document.querySelectorAll('.qty-confirm-returned')];
+      const repInputs = [...document.querySelectorAll('.qty-confirm-repair')];
+      const payload   = [];
+      let valid       = true;
+
+      retInputs.forEach((inp, i) => {
+        const qty_returned  = parseInt(inp.value, 10) || 0;
+        const qty_to_repair = parseInt(repInputs[i]?.value, 10) || 0;
+        const max           = parseInt(inp.dataset.max, 10);
+        if (qty_returned < 0 || qty_returned > max) {
+          errEl.innerHTML = `<div class="alert alert-error">จำนวนที่รับคืนต้องอยู่ระหว่าง 0–${max}</div>`;
+          valid = false;
+        }
+        if (valid && qty_to_repair > qty_returned) {
+          errEl.innerHTML = '<div class="alert alert-error">จำนวนส่งซ่อมต้องไม่เกินจำนวนที่รับคืน</div>';
+          valid = false;
+        }
+        if (valid) payload.push({
+          item_id:           inp.dataset.itemId,
+          quantity_returned: qty_returned,
+          ...(qty_to_repair > 0 ? { quantity_to_repair: qty_to_repair } : {}),
+        });
+      });
+
+      if (!valid) return;
+      const btn = e.submitter || document.querySelector('#admin-confirm-form [type=submit]');
+      btn.disabled = true; btn.textContent = 'กำลังยืนยัน…';
+      try {
+        await confirmReturn(pending.id, { items: payload });
+        await renderPage();
+      } catch (err) {
+        errEl.innerHTML = `<div class="alert alert-error">${h(err.message)}</div>`;
+        btn.disabled = false; btn.textContent = 'ยืนยันการรับคืน';
       }
     });
   }
