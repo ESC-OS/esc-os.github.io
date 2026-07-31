@@ -1,6 +1,6 @@
 import { requireAuth } from '../auth.js';
 import { getVisits, confirmVisit, rejectVisit, completeVisit, cancelVisit, getNotifications } from '../api.js';
-import { h, statusBadge, formatDate, renderNavbar, openModal } from '../ui.js';
+import { h, statusBadge, formatDate, renderNavbar, openModal, showConfirmModal } from '../ui.js';
 
 const STATUS_OPTS = [
   ['pending',   'รอยืนยัน'],
@@ -149,24 +149,26 @@ async function init() {
     });
 
     document.querySelectorAll('.do-complete').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!confirm('ยืนยันว่านัดชมเสร็จสิ้น?')) return;
-        btn.disabled = true;
-        try {
-          await completeVisit(btn.dataset.id);
-          renderList(currentStatus);
-        } catch (err) { errBox(err.message); btn.disabled = false; }
+      btn.addEventListener('click', () => {
+        showConfirmModal('ยืนยันว่านัดชมเสร็จสิ้น?', async () => {
+          btn.disabled = true;
+          try {
+            await completeVisit(btn.dataset.id);
+            renderList(currentStatus);
+          } catch (err) { errBox(err.message); btn.disabled = false; }
+        }, { confirmLabel: 'เสร็จสิ้น' });
       });
     });
 
     document.querySelectorAll('.do-cancel').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!confirm('ยกเลิกนัดชมนี้?')) return;
-        btn.disabled = true;
-        try {
-          await cancelVisit(btn.dataset.id, {});
-          renderList(currentStatus);
-        } catch (err) { errBox(err.message); btn.disabled = false; }
+      btn.addEventListener('click', () => {
+        showConfirmModal('ยกเลิกนัดชมนี้?', async () => {
+          btn.disabled = true;
+          try {
+            await cancelVisit(btn.dataset.id, {});
+            renderList(currentStatus);
+          } catch (err) { errBox(err.message); btn.disabled = false; }
+        }, { title: 'ยืนยันการยกเลิก', confirmLabel: 'ยกเลิก', confirmClass: 'btn-danger' });
       });
     });
   }

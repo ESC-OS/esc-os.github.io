@@ -7,7 +7,7 @@ import {
   getStorageAreas, approveStorageArea, rejectStorageArea,
   getDonations, getDonation, approveDonation, rejectDonation, reviewDonationItem, completeDonation,
 } from '../api.js';
-import { h, statusBadge, formatDate, formatDateTime, renderNavbar, openModal, loadAuthPhotos } from '../ui.js';
+import { h, statusBadge, formatDate, formatDateTime, renderNavbar, openModal, loadAuthPhotos, showConfirmModal, showError } from '../ui.js';
 
 const REQUEST_STATUS_OPTS = [
   ['pending',          'รอดำเนินการ'],
@@ -76,20 +76,22 @@ async function init() {
 
   // ── Count badges ───────────────────────────────────────────────────────────
   async function loadCounts() {
-    const [rq, rt, vs, dp, sa, dn] = await Promise.allSettled([
+    const [rq, rt, vsPend, vsConf, dp, sa, dn] = await Promise.allSettled([
       getRequests({ limit: 100, status: 'pending' }),
       getAllReturns('pending'),
       getVisits({ limit: 100, status: 'pending' }),
+      getVisits({ limit: 100, status: 'confirmed' }),
       getDeposits({ limit: 100, status: 'pending' }),
       getStorageAreas({ limit: 100, status: 'pending' }),
       getDonations({ limit: 100, status: 'pending' }),
     ]);
-    counts.requests  = rq.status === 'fulfilled' ? (rq.value?.data?.length ?? 0) : 0;
-    counts.returns   = rt.status === 'fulfilled' ? (rt.value?.data?.length ?? 0) : 0;
-    counts.visits    = vs.status === 'fulfilled' ? (vs.value?.data?.length ?? 0) : 0;
-    counts.deposits  = dp.status === 'fulfilled' ? (dp.value?.data?.length ?? 0) : 0;
-    counts.storage   = sa.status === 'fulfilled' ? (sa.value?.data?.length ?? 0) : 0;
-    counts.donations = dn.status === 'fulfilled' ? (dn.value?.data?.length ?? 0) : 0;
+    counts.requests  = rq.status     === 'fulfilled' ? (rq.value?.data?.length     ?? 0) : 0;
+    counts.returns   = rt.status     === 'fulfilled' ? (rt.value?.data?.length     ?? 0) : 0;
+    counts.visits    = (vsPend.status === 'fulfilled' ? (vsPend.value?.data?.length ?? 0) : 0)
+                     + (vsConf.status === 'fulfilled' ? (vsConf.value?.data?.length ?? 0) : 0);
+    counts.deposits  = dp.status     === 'fulfilled' ? (dp.value?.data?.length     ?? 0) : 0;
+    counts.storage   = sa.status     === 'fulfilled' ? (sa.value?.data?.length     ?? 0) : 0;
+    counts.donations = dn.status     === 'fulfilled' ? (dn.value?.data?.length     ?? 0) : 0;
   }
 
   function updateBadge(tab, n) {
@@ -208,7 +210,7 @@ async function init() {
     list.innerHTML = `<div class="svc-list">
       ${rows.map(r => `
         <a href="request-detail.html?id=${h(r.id)}" class="svc-row">
-          <span class="svc-row-id">#${h(r.id.slice(0, 8))}</span>
+          <span class="svc-row-id">#${h(r.id)}</span>
           <span class="svc-row-name">${h(r.name || '-')}</span>
           <span class="svc-row-meta">${h(r.user_name || '')}</span>
           <span>
@@ -460,26 +462,53 @@ async function init() {
     }
   }
 
+  // ── Shared: status pill strip ──────────────────────────────────────────────
+  function statusPills(opts, current) {
+    return opts.map(([v, l]) =>
+      `<button class="req-pill${v === current ? ' active' : ''}" data-status="${h(v)}">${h(l)}</button>`
+    ).join('');
+  }
+
+  function bindPills(container, onPick) {
+    container.querySelectorAll('.req-pill').forEach(pill =>
+      pill.addEventListener('click', () => {
+        container.querySelectorAll('.req-pill').forEach(p =>
+          p.classList.toggle('active', p.dataset.status === pill.dataset.status)
+        );
+        onPick(pill.dataset.status);
+      })
+    );
+  }
+
   // ── Tab: นัดชม ────────────────────────────────────────────────────────────
   async function renderVisits() {
     const el = tabContent();
     if (!el) return;
+
+    const [pendingRes, confirmedRes] = await Promise.allSettled([
+      getVisits({ limit: 100, status: 'pending' }),
+      getVisits({ limit: 100, status: 'confirmed' }),
+    ]);
+    const visitCounts = {
+      pending:   pendingRes.status   === 'fulfilled' ? (pendingRes.value?.data?.length   ?? 0) : 0,
+      confirmed: confirmedRes.status === 'fulfilled' ? (confirmedRes.value?.data?.length ?? 0) : 0,
+    };
+
+    function visitPillHtml(value, label) {
+      const isActive = value === visitStatus;
+      const count    = visitCounts[value];
+      const bubble   = count > 0
+        ? `<span class="req-pill-count${isActive ? ' active' : ''}">${count}</span>`
+        : '';
+      return `<button class="req-pill${isActive ? ' active' : ''}" data-status="${h(value)}">${h(label)}${bubble}</button>`;
+    }
+
     el.innerHTML = `
-      <div class="filter-row" style="margin-bottom:1rem">
-        <select class="filter-select" id="visit-filter">
-          ${VISIT_STATUS_OPTS.map(([v, l]) =>
-            `<option value="${h(v)}"${v === visitStatus ? ' selected' : ''}>${h(l)}</option>`
-          ).join('')}
-        </select>
-      </div>
+      <div class="req-pills">${VISIT_STATUS_OPTS.map(([v, l]) => visitPillHtml(v, l)).join('')}</div>
       <div id="visit-error"></div>
       <div id="visit-list"></div>`;
 
-    document.getElementById('visit-filter').addEventListener('change', e => {
-      visitStatus = e.target.value;
-      loadVisitList();
-    });
-
+    bindPills(el, v => { visitStatus = v; loadVisitList(); });
     await loadVisitList();
   }
 
@@ -564,8 +593,6 @@ async function init() {
           try {
             await confirmVisit(id, note ? { admin_note: note } : {});
             close();
-            counts.visits = Math.max(0, counts.visits - 1);
-            updateBadge('visits', counts.visits);
             await loadVisitList();
           } catch (err) {
             document.getElementById('modal-err').innerHTML = `<div class="alert alert-error">${h(err.message)}</div>`;
@@ -606,32 +633,34 @@ async function init() {
     });
 
     document.querySelectorAll('.do-complete').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!confirm('ยืนยันว่านัดชมเสร็จสิ้น?')) return;
-        btn.disabled = true;
-        try {
-          await completeVisit(btn.dataset.id);
-          await loadVisitList();
-        } catch (err) {
-          const errEl = document.getElementById('visit-error');
-          if (errEl) errEl.innerHTML = `<div class="alert alert-error">${h(err.message)}</div>`;
-          btn.disabled = false;
-        }
+      btn.addEventListener('click', () => {
+        showConfirmModal('ยืนยันว่านัดชมเสร็จสิ้น?', async () => {
+          btn.disabled = true;
+          try {
+            await completeVisit(btn.dataset.id);
+            await loadVisitList();
+          } catch (err) {
+            const errEl = document.getElementById('visit-error');
+            if (errEl) errEl.innerHTML = `<div class="alert alert-error">${h(err.message)}</div>`;
+            btn.disabled = false;
+          }
+        }, { confirmLabel: 'เสร็จสิ้น' });
       });
     });
 
     document.querySelectorAll('.do-cancel').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!confirm('ยกเลิกนัดชมนี้?')) return;
-        btn.disabled = true;
-        try {
-          await cancelVisit(btn.dataset.id, {});
-          await loadVisitList();
-        } catch (err) {
-          const errEl = document.getElementById('visit-error');
-          if (errEl) errEl.innerHTML = `<div class="alert alert-error">${h(err.message)}</div>`;
-          btn.disabled = false;
-        }
+      btn.addEventListener('click', () => {
+        showConfirmModal('ยกเลิกนัดชมนี้?', async () => {
+          btn.disabled = true;
+          try {
+            await cancelVisit(btn.dataset.id, {});
+            await loadVisitList();
+          } catch (err) {
+            const errEl = document.getElementById('visit-error');
+            if (errEl) errEl.innerHTML = `<div class="alert alert-error">${h(err.message)}</div>`;
+            btn.disabled = false;
+          }
+        }, { title: 'ยืนยันการยกเลิก', confirmLabel: 'ยกเลิก', confirmClass: 'btn-danger' });
       });
     });
   }
@@ -640,19 +669,27 @@ async function init() {
   async function renderDeposits() {
     const el = tabContent();
     if (!el) return;
+
+    const [pendingRes] = await Promise.allSettled([
+      getDeposits({ limit: 100, status: 'pending' }),
+    ]);
+    const depCounts = {
+      pending: pendingRes.status === 'fulfilled' ? (pendingRes.value?.data?.length ?? 0) : 0,
+    };
+
+    function depPillHtml(value, label) {
+      const isActive = value === depositStatus;
+      const count    = depCounts[value];
+      const bubble   = count > 0
+        ? `<span class="req-pill-count${isActive ? ' active' : ''}">${count}</span>`
+        : '';
+      return `<button class="req-pill${isActive ? ' active' : ''}" data-status="${h(value)}">${h(label)}${bubble}</button>`;
+    }
+
     el.innerHTML = `
-      <div class="filter-row" style="margin-bottom:1rem">
-        <select class="filter-select" id="deposit-filter">
-          ${DEPOSIT_STATUS_OPTS.map(([v, l]) =>
-            `<option value="${h(v)}"${v === depositStatus ? ' selected' : ''}>${h(l)}</option>`
-          ).join('')}
-        </select>
-      </div>
+      <div class="req-pills">${DEPOSIT_STATUS_OPTS.map(([v, l]) => depPillHtml(v, l)).join('')}</div>
       <div id="deposit-list"></div>`;
-    document.getElementById('deposit-filter').addEventListener('change', e => {
-      depositStatus = e.target.value;
-      loadDepositList();
-    });
+    bindPills(el, v => { depositStatus = v; loadDepositList(); });
     await loadDepositList();
   }
 
@@ -684,7 +721,7 @@ async function init() {
               ${deposits.map(d => `
                 <tr>
                   <td>
-                    <div style="font-weight:600;font-size:.88rem">#${h(String(d.id).slice(0,8))} ${h(d.project_name || '-')}</div>
+                    <div style="font-weight:600;font-size:.88rem">#${h(d.id)} ${h(d.project_name || '-')}</div>
                     <div style="font-size:.75rem;color:var(--text-muted)">${h(d.user_name ?? d.requester_name ?? '')}</div>
                   </td>
                   <td style="white-space:nowrap">${formatDate(d.deposit_date)}</td>
@@ -729,19 +766,27 @@ async function init() {
   async function renderStorageAreas() {
     const el = tabContent();
     if (!el) return;
+
+    const [pendingRes] = await Promise.allSettled([
+      getStorageAreas({ limit: 100, status: 'pending' }),
+    ]);
+    const saCounts = {
+      pending: pendingRes.status === 'fulfilled' ? (pendingRes.value?.data?.length ?? 0) : 0,
+    };
+
+    function saPillHtml(value, label) {
+      const isActive = value === storageStatus;
+      const count    = saCounts[value];
+      const bubble   = count > 0
+        ? `<span class="req-pill-count${isActive ? ' active' : ''}">${count}</span>`
+        : '';
+      return `<button class="req-pill${isActive ? ' active' : ''}" data-status="${h(value)}">${h(label)}${bubble}</button>`;
+    }
+
     el.innerHTML = `
-      <div class="filter-row" style="margin-bottom:1rem">
-        <select class="filter-select" id="storage-filter">
-          ${STORAGE_STATUS_OPTS.map(([v, l]) =>
-            `<option value="${h(v)}"${v === storageStatus ? ' selected' : ''}>${h(l)}</option>`
-          ).join('')}
-        </select>
-      </div>
+      <div class="req-pills">${STORAGE_STATUS_OPTS.map(([v, l]) => saPillHtml(v, l)).join('')}</div>
       <div id="storage-list"></div>`;
-    document.getElementById('storage-filter').addEventListener('change', e => {
-      storageStatus = e.target.value;
-      loadStorageList();
-    });
+    bindPills(el, v => { storageStatus = v; loadStorageList(); });
     await loadStorageList();
   }
 
@@ -773,7 +818,7 @@ async function init() {
               ${areas.map(a => `
                 <tr>
                   <td>
-                    <div style="font-weight:600;font-size:.88rem">#${h(String(a.id).slice(0,8))} ${h(a.project_name || '-')}</div>
+                    <div style="font-weight:600;font-size:.88rem">#${h(a.id)} ${h(a.project_name || '-')}</div>
                     <div style="font-size:.75rem;color:var(--text-muted)">${h(a.user_name ?? a.requester_name ?? '')}</div>
                   </td>
                   <td style="white-space:nowrap">${formatDate(a.start_date)}</td>
@@ -818,19 +863,29 @@ async function init() {
   async function renderDonations() {
     const el = tabContent();
     if (!el) return;
+
+    const [pendingRes, donatedRes] = await Promise.allSettled([
+      getDonations({ limit: 100, status: 'pending' }),
+      getDonations({ limit: 100, status: 'donated' }),
+    ]);
+    const dnCounts = {
+      pending: pendingRes.status === 'fulfilled' ? (pendingRes.value?.data?.length ?? 0) : 0,
+      donated: donatedRes.status === 'fulfilled' ? (donatedRes.value?.data?.length ?? 0) : 0,
+    };
+
+    function dnPillHtml(value, label) {
+      const isActive = value === donationStatus;
+      const count    = dnCounts[value];
+      const bubble   = count > 0
+        ? `<span class="req-pill-count${isActive ? ' active' : ''}">${count}</span>`
+        : '';
+      return `<button class="req-pill${isActive ? ' active' : ''}" data-status="${h(value)}">${h(label)}${bubble}</button>`;
+    }
+
     el.innerHTML = `
-      <div class="filter-row" style="margin-bottom:1rem">
-        <select class="filter-select" id="donation-filter">
-          ${DONATION_STATUS_OPTS.map(([v, l]) =>
-            `<option value="${h(v)}"${v === donationStatus ? ' selected' : ''}>${h(l)}</option>`
-          ).join('')}
-        </select>
-      </div>
+      <div class="req-pills">${DONATION_STATUS_OPTS.map(([v, l]) => dnPillHtml(v, l)).join('')}</div>
       <div id="donation-list"></div>`;
-    document.getElementById('donation-filter').addEventListener('change', e => {
-      donationStatus = e.target.value;
-      loadDonationList();
-    });
+    bindPills(el, v => { donationStatus = v; loadDonationList(); });
     await loadDonationList();
   }
 
@@ -861,7 +916,7 @@ async function init() {
               ${donations.map(d => `
                 <tr>
                   <td>
-                    <div style="font-weight:600;font-size:.88rem">#${h(String(d.id).slice(0,8))} ${h(d.project_name || '-')}</div>
+                    <div style="font-weight:600;font-size:.88rem">#${h(d.id)} ${h(d.project_name || '-')}</div>
                     <div style="font-size:.75rem;color:var(--text-muted)">${h(d.user_name ?? d.requester_name ?? '')}</div>
                   </td>
                   <td style="white-space:nowrap">${formatDate(d.donation_date)}</td>
@@ -886,16 +941,17 @@ async function init() {
       });
 
       list.querySelectorAll('.dn-complete').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          if (!confirm('ยืนยันรับบริจาคนี้?')) return;
-          btn.disabled = true;
-          try {
-            await completeDonation(btn.dataset.id);
-            await loadDonationList();
-          } catch (err) {
-            alert(err.message);
-            btn.disabled = false;
-          }
+        btn.addEventListener('click', () => {
+          showConfirmModal('ยืนยันรับบริจาคนี้?', async () => {
+            btn.disabled = true;
+            try {
+              await completeDonation(btn.dataset.id);
+              await loadDonationList();
+            } catch (err) {
+              showError(err.message);
+              btn.disabled = false;
+            }
+          }, { confirmLabel: 'ยืนยันรับบริจาค' });
         });
       });
     } catch (err) {

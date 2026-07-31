@@ -26,7 +26,7 @@ function renderList(areas) {
   return `<div class="svc-list">
     ${areas.map(a => `
     <a href="storage-area-detail.html?id=${h(a.id)}" class="svc-row">
-      <span class="svc-row-id">#${h(a.id.slice(0, 8))}</span>
+      <span class="svc-row-id">#${h(a.id)}</span>
       <span class="svc-row-name">${h(a.project_name || a.project_id || '-')}</span>
       <span class="svc-row-meta">${formatDate(a.start_date)} – ${formatDate(a.end_date)}</span>
       ${statusBadge(a.status)}

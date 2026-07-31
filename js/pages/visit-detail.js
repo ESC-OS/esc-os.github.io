@@ -75,7 +75,7 @@ async function init() {
           ${visit.borrow_request_id ? `
           <div class="info-row">
             <span class="info-label">คำขอยืมที่เชื่อมโยง</span>
-            <span><a href="request-detail.html?id=${h(visit.borrow_request_id)}" style="color:var(--primary)">#${h(visit.borrow_request_id.slice(0, 8))}</a></span>
+            <span><a href="request-detail.html?id=${h(visit.borrow_request_id)}" style="color:var(--primary)">#${h(visit.borrow_request_id)}</a></span>
           </div>` : ''}
           <div class="info-row">
             <span class="info-label">วันที่สร้าง</span>

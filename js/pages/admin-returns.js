@@ -44,7 +44,7 @@ async function init() {
                 ${returns.map(r => `
                   <tr class="clickable-row" data-return-id="${h(String(r.id))}" style="cursor:pointer" title="คลิกเพื่อดูรายละเอียด">
                     <td>${h(r.request_name ?? '-')}</td>
-                    <td style="font-size:.82rem;color:var(--text-muted)">${h(String(r.request_id ?? '').slice(0, 8))}</td>
+                    <td style="font-size:.82rem;color:var(--text-muted)">${h(String(r.request_id ?? ''))}</td>
                     <td style="font-size:.82rem;white-space:nowrap">${formatDateTime(r.created_at)}</td>
                     <td>
                       ${r.all_items_ok === 1 || r.all_items_ok === true

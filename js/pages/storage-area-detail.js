@@ -9,7 +9,7 @@ import {
   photoUrl,
   getNotifications,
 } from '../api.js';
-import { h, statusBadge, formatDate, formatCountdown, renderNavbar, showError, openModal } from '../ui.js';
+import { h, statusBadge, formatDate, formatCountdown, renderNavbar, showError, openModal, showConfirmModal } from '../ui.js';
 
 function daysBetween(start, end) {
   if (!start || !end) return '-';
@@ -97,7 +97,7 @@ async function init() {
 
       <div class="req-header">
         <div class="req-title-row">
-          <h1 class="page-title" style="margin:0">#${h(id.slice(0, 8))}</h1>
+          <h1 class="page-title" style="margin:0">#${h(id)}</h1>
           ${statusBadge(status)}
         </div>
         <div class="page-title" style="font-size:1.1rem;font-weight:500;color:var(--text-muted)">
@@ -145,21 +145,23 @@ async function init() {
     }
 
     // ── Submit ────────────────────────────────────────────────────────────────
-    document.getElementById('btn-submit')?.addEventListener('click', async () => {
-      if (!confirm('ยืนยันการส่งคำขอพื้นที่จัดเก็บ?')) return;
-      try {
-        await submitStorageArea(id);
-        await renderPage();
-      } catch (err) { errBox(err.message); }
+    document.getElementById('btn-submit')?.addEventListener('click', () => {
+      showConfirmModal('ยืนยันการส่งคำขอพื้นที่จัดเก็บ?', async () => {
+        try {
+          await submitStorageArea(id);
+          await renderPage();
+        } catch (err) { errBox(err.message); }
+      }, { confirmLabel: 'ส่งคำขอ' });
     });
 
     // ── Approve ───────────────────────────────────────────────────────────────
-    document.getElementById('btn-approve')?.addEventListener('click', async () => {
-      if (!confirm('ยืนยันการอนุมัติคำขอนี้?')) return;
-      try {
-        await approveStorageArea(id, {});
-        await renderPage();
-      } catch (err) { errBox(err.message); }
+    document.getElementById('btn-approve')?.addEventListener('click', () => {
+      showConfirmModal('ยืนยันการอนุมัติคำขอนี้?', async () => {
+        try {
+          await approveStorageArea(id, {});
+          await renderPage();
+        } catch (err) { errBox(err.message); }
+      }, { confirmLabel: 'อนุมัติ' });
     });
 
     // ── Reject (modal) ────────────────────────────────────────────────────────

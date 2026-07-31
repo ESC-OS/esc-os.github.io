@@ -525,3 +525,19 @@ export function openModal(titleText, bodyHtml) {
 
   return close;
 }
+
+// Styled confirmation dialog — replaces window.confirm() across the project
+export function showConfirmModal(message, onConfirm, {
+  title        = 'ยืนยัน',
+  confirmLabel = 'ยืนยัน',
+  confirmClass = 'btn-primary',
+} = {}) {
+  const close = openModal(title, `
+    <p style="margin:0 0 1.25rem;font-size:.95rem;line-height:1.6">${h(message)}</p>
+    <div class="form-actions">
+      <button class="btn ${confirmClass}" id="conf-ok-btn">${h(confirmLabel)}</button>
+      <button class="btn btn-secondary" id="conf-cancel-btn">ยกเลิก</button>
+    </div>`);
+  document.getElementById('conf-ok-btn').addEventListener('click', () => { close(); onConfirm(); });
+  document.getElementById('conf-cancel-btn').addEventListener('click', close);
+}

@@ -10,7 +10,7 @@ import {
   uploadPhoto,
   photoUrl,
 } from '../api.js';
-import { h, statusBadge, formatDate, formatCountdown, renderNavbar, showError, openModal } from '../ui.js';
+import { h, statusBadge, formatDate, formatCountdown, renderNavbar, showError, openModal, showConfirmModal } from '../ui.js';
 
 async function init() {
   const user = await requireAuth();
@@ -153,7 +153,7 @@ async function init() {
       <a href="deposits.html" class="back-btn">← ฝากชั่วคราว</a>
 
       <div class="page-header">
-        <h1 class="page-title">#${h(id.slice(0, 8))} ${statusBadge(status)}</h1>
+        <h1 class="page-title">#${h(id)} ${statusBadge(status)}</h1>
         <div style="color:var(--text-muted)">${h(deposit.project_name || deposit.project_id || '-')}</div>
       </div>
 
@@ -195,18 +195,20 @@ async function init() {
     // ── Events ────────────────────────────────────────────────────────────────
 
     // Submit draft
-    document.getElementById('btn-submit')?.addEventListener('click', async () => {
-      if (!confirm('ยืนยันการส่งคำขอฝากของ?')) return;
-      try {
-        await submitDeposit(id);
-        await renderPage();
-      } catch (err) { showError(err.message); }
+    document.getElementById('btn-submit')?.addEventListener('click', () => {
+      showConfirmModal('ยืนยันการส่งคำขอฝากของ?', async () => {
+        try {
+          await submitDeposit(id);
+          await renderPage();
+        } catch (err) { showError(err.message); }
+      }, { confirmLabel: 'ส่งคำขอ' });
     });
 
     // Cancel draft
     document.getElementById('btn-cancel')?.addEventListener('click', () => {
-      if (!confirm('ยืนยันการยกเลิกคำขอ?')) return;
-      showError('ไม่สามารถลบคำขอร่างได้ในขณะนี้');
+      showConfirmModal('ยืนยันการยกเลิกคำขอ?', () => {
+        showError('ไม่สามารถลบคำขอร่างได้ในขณะนี้');
+      }, { title: 'ยืนยันการยกเลิก', confirmLabel: 'ยกเลิกคำขอ', confirmClass: 'btn-danger' });
     });
 
     // Admin: approve

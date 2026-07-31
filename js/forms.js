@@ -382,16 +382,17 @@ export async function openVisitModal({ projectId, onSuccess } = {}) {
   let projects = [], slots = [], reqs = [], holidays = [];
   try {
     const year = new Date().getFullYear();
-    const [pr, sr, rr, hr] = await Promise.all([
+    const [pr, sr, rr, hr, hr2] = await Promise.all([
       getProjects(),
       getSlots('visit'),
       getRequests('in_lend').catch(() => null),
       getHolidays(year).catch(() => ({ data: [] })),
+      getHolidays(year + 1).catch(() => ({ data: [] })),
     ]);
     projects = pr.data ?? [];
     slots    = sr.data ?? [];
     reqs     = rr?.requests ?? rr?.data ?? [];
-    holidays = (hr?.data ?? []).map(h => h.date);
+    holidays = [...(hr?.data ?? []), ...(hr2?.data ?? [])].map(hd => hd.date);
   } catch (err) {
     lc(); showError('โหลดข้อมูลไม่สำเร็จ: ' + err.message); return;
   }
@@ -445,7 +446,7 @@ export async function openVisitModal({ projectId, onSuccess } = {}) {
         <label class="form-label">คำขอยืมที่เกี่ยวข้อง (ไม่บังคับ)</label>
         <select class="form-select" id="vt-req">
           <option value="">-- ไม่เชื่อมโยง --</option>
-          ${reqs.map(r => `<option value="${h(r.id)}">#${h(r.id.slice(0,8))} — ${h(r.project_name||r.project_id||'')}</option>`).join('')}
+          ${reqs.map(r => `<option value="${h(r.id)}">#${h(r.id)} — ${h(r.project_name||r.project_id||'')}</option>`).join('')}
         </select>
       </div>
       <div class="form-actions" style="margin-top:1rem">

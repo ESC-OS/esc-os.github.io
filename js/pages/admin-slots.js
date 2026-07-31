@@ -1,6 +1,6 @@
 import { requireAuth } from '../auth.js';
 import { getSlots, createSlot, updateSlot, deleteSlot, getNotifications } from '../api.js';
-import { h, renderNavbar, showError } from '../ui.js';
+import { h, renderNavbar, showError, showConfirmModal } from '../ui.js';
 
 const DAYS = ['', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัส', 'ศุกร์', 'เสาร์', 'อาทิตย์'];
 
@@ -150,16 +150,17 @@ async function init() {
 
     // Delete slot
     document.querySelectorAll('.slot-delete-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!confirm(`ลบช่วงเวลา "${btn.dataset.label}"?`)) return;
-        btn.disabled = true;
-        try {
-          await deleteSlot(btn.dataset.id);
-          await loadAndRender();
-        } catch (err) {
-          showError('ลบช่วงเวลาไม่สำเร็จ: ' + err.message);
-          btn.disabled = false;
-        }
+      btn.addEventListener('click', () => {
+        showConfirmModal(`ลบช่วงเวลา "${btn.dataset.label}"?`, async () => {
+          btn.disabled = true;
+          try {
+            await deleteSlot(btn.dataset.id);
+            await loadAndRender();
+          } catch (err) {
+            showError('ลบช่วงเวลาไม่สำเร็จ: ' + err.message);
+            btn.disabled = false;
+          }
+        }, { title: 'ยืนยันการลบ', confirmLabel: 'ลบ', confirmClass: 'btn-danger' });
       });
     });
 

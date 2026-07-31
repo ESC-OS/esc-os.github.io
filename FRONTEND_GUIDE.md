@@ -280,7 +280,26 @@ Step 3: `POST /donations/:id/submit`
 - `day_of_week` values: `monday`, `wednesday`, `friday` only
 
 ### Admin: Thai Holidays
-- `GET /holidays?year=` / `POST /holidays` / `DELETE /holidays/:id`
+
+Two types of holidays:
+- **One-off** — specific dates (lunar holidays, compensatory days). Add each year via `POST /holidays`.
+- **Recurring** — fixed month+day (e.g. Jan 1, May 1). Stored once, auto-apply every year.
+
+`GET /holidays?year=YYYY` — merges both types into one sorted list. Each entry has `is_recurring: bool`. Use this for the date picker (disable returned dates).
+
+**One-off CRUD:**
+- `POST /holidays` — Body: `{ date, name }` (YYYY-MM-DD)
+- `DELETE /holidays/:id`
+
+**Recurring CRUD:**
+- `GET /holidays/recurring` — list all recurring entries (`{ id, month, day, name }`)
+- `POST /holidays/recurring` — Body: `{ month, day, name }` (month 1–12, day 1–31)
+- `DELETE /holidays/:id` — same endpoint, works for recurring IDs too
+
+**UI notes:**
+- Show `is_recurring` badge in the holidays list so admin knows which entries repeat yearly
+- Warn before deleting a recurring holiday — it removes it for all future years
+- The date picker just uses `date` from `GET /holidays?year=` as before — no changes needed there
 
 ### Admin: Broadcast
 - `POST /notifications/broadcast` with `{ title, body }`

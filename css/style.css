@@ -898,7 +898,7 @@ body.has-sidebar #modal-root { width: 0; overflow: visible; flex-shrink: 0; }
   padding: .15em .6em; font-size: .8rem; font-weight: 600;
 }
 .status-pill-pending   { background: var(--warning-bg); color: var(--warning); }
-.status-pill-confirmed { background: var(--success-bg); color: var(--success); }
+.status-pill-confirmed { background: #d1fae5; color: #065f46; }
 .status-pill-rejected  { background: var(--error-bg); color: var(--error); }
 
 .item-inactive td { opacity: .5; }
@@ -915,7 +915,7 @@ body.has-sidebar #modal-root { width: 0; overflow: visible; flex-shrink: 0; }
 
 /* New status badges */
 .badge-approved   { background: #d1fae5; color: #065f46; }
-.badge-confirmed  { background: var(--success-bg); color: var(--success); }
+.badge-confirmed  { background: #d1fae5; color: #065f46; }
 .badge-deposited  { background: #e0e7ff; color: #3730a3; }
 .badge-donated    { background: #fce7f3; color: #9d174d; }
 .badge-in_use     { background: #dbeafe; color: #1e40af; }
@@ -1395,7 +1395,7 @@ select.cs-native {
   font-weight: 700;
 }
 .queue-tab-count {
-  background: var(--error);
+  background: var(--warning);
   color: #fff;
   font-size: .68rem;
   font-weight: 700;
@@ -1408,7 +1408,7 @@ select.cs-native {
   padding: 0 .3rem;
   line-height: 1;
 }
-.queue-tab-count.zero { background: var(--border); color: var(--text-muted); }
+.queue-tab-count.zero { display: none; }
 
 /* =====================================================
    TOAST ERRORS

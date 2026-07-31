@@ -4,7 +4,7 @@ import {
   addRequestItem, removeRequestItem, adjustRequestItem,
   submitRequest, cancelRequest, unsubmitRequest, processRequest, markReady, confirmPickup,
   getConditions, submitConditions, submitReturn, confirmReturn, uploadPhoto,
-  updateRequest, getSlots,
+  updateRequest, getSlots, getHolidays,
 } from '../api.js';
 import {
   h, statusBadge, formatDate, formatDateTime, formatCountdown,
@@ -109,6 +109,17 @@ async function init() {
         for (let d = new Date(start); d <= retEnd; d.setDate(d.getDate() + 1)) {
           if (allowedDays.has(d.getDay())) uniqueReturnDates.push(toDateStr(new Date(d)));
         }
+      }
+
+      // Filter out Thai public holidays
+      {
+        const startYear = start.getFullYear();
+        const endYear   = new Date(Date.now() + 90 * 864e5).getFullYear();
+        const hdYears   = startYear === endYear ? [startYear] : [startYear, endYear];
+        const hdResults = await Promise.all(hdYears.map(y => getHolidays(y).catch(() => ({ data: [] }))));
+        const holidaySet = new Set(hdResults.flatMap(r => (r?.data ?? []).map(hd => hd.date)));
+        uniquePickupDates = uniquePickupDates.filter(ds => !holidaySet.has(ds));
+        uniqueReturnDates = uniqueReturnDates.filter(ds => !holidaySet.has(ds));
       }
     }
 
@@ -496,7 +507,7 @@ async function init() {
 
       <div class="req-header">
         <div class="req-title-row">
-          <span class="req-id">#${h(id.slice(0, 8))}</span>
+          <span class="req-id">#${h(id)}</span>
           <span style="font-weight:600;font-size:1.1rem">${h(request.name || '-')}</span>
           ${statusBadge(status)}
           ${request.is_overdue ? '<span class="badge badge-overdue">เกินกำหนด</span>' : ''}

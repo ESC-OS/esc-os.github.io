@@ -168,12 +168,14 @@ export const updateSlot       = (id, data)       => api.patch(`/slots/${id}`, da
 export const deleteSlot       = (id)             => api.delete(`/slots/${id}`);
 
 // Thai Holidays
-export const getHolidays      = (year)           => api.get(`/holidays${year ? '?year=' + year : ''}`);
-export const createHoliday    = (data)           => api.post('/holidays', data);
-export const deleteHoliday    = (id)             => api.delete(`/holidays/${id}`);
+export const getHolidays           = (year)  => api.get(`/holidays${year ? '?year=' + year : ''}`);
+export const createHoliday         = (data)  => api.post('/holidays', data);
+export const deleteHoliday         = (id)    => api.delete(`/holidays/${id}`);
+export const getRecurringHolidays  = ()      => api.get('/holidays/recurring');
+export const createRecurringHoliday = (data) => api.post('/holidays/recurring', data);
 
 // Calendar & Status
-export const getCalendar      = ()               => api.get('/calendar');
+export const getCalendar      = (params)         => api.get(q('/calendar', params));
 export const getStatus        = ()               => api.get('/status');
 
 // Fetch a photo with auth and return a blob object URL (for use in <img src>)

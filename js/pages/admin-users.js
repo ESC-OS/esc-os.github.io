@@ -1,6 +1,6 @@
 import { requireAuth } from '../auth.js';
 import { getUsers, updateUserRole, updateUserStatus, getNotifications } from '../api.js';
-import { h, formatDate, renderNavbar, showError } from '../ui.js';
+import { h, formatDate, renderNavbar, showError, showConfirmModal } from '../ui.js';
 
 async function init() {
   const me = await requireAuth();
@@ -161,25 +161,24 @@ async function init() {
 
     // Toggle status
     document.querySelectorAll('.do-toggle-status').forEach(btn => {
-      btn.addEventListener('click', async () => {
+      btn.addEventListener('click', () => {
         const uid      = btn.dataset.uid;
         const isActive = btn.dataset.active === '1';
         const action   = isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน';
         const u        = allUsers.find(x => String(x.id) === uid);
-        if (!confirm(`${action}ผู้ใช้ "${u?.name ?? uid}"?`)) return;
-
-        btn.disabled = true;
-        try {
-          await updateUserStatus(uid, !isActive);
-          // update local copy
-          allUsers = allUsers.map(x =>
-            String(x.id) === uid ? { ...x, is_active: isActive ? 0 : 1 } : x
-          );
-          renderPage();
-        } catch (err) {
-          alert(err.message);
-          btn.disabled = false;
-        }
+        showConfirmModal(`${action}ผู้ใช้ "${u?.name ?? uid}"?`, async () => {
+          btn.disabled = true;
+          try {
+            await updateUserStatus(uid, !isActive);
+            allUsers = allUsers.map(x =>
+              String(x.id) === uid ? { ...x, is_active: isActive ? 0 : 1 } : x
+            );
+            renderPage();
+          } catch (err) {
+            showError(err.message);
+            btn.disabled = false;
+          }
+        }, { confirmLabel: action });
       });
     });
   }

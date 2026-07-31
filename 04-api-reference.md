@@ -209,11 +209,18 @@ Returns full audit log for the item.
 ---
 
 ## Thai Holidays — `/holidays`
+
+Two types of holidays:
+- **One-off** (`thai_holidays` table) — specific YYYY-MM-DD dates: lunar holidays, compensatory days, special holidays. Must be added each year.
+- **Recurring** (`recurring_holidays` table) — stored as `month`+`day`, automatically applied to every year. No re-entry needed.
+
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | /holidays | [auth] | List. Query: `?year=2026` |
-| POST | /holidays | [A] | Add. Body: `{ date, name }` (date = YYYY-MM-DD) |
-| DELETE | /holidays/:id | [A] | Remove |
+| GET | /holidays | [auth] | List. Query: `?year=YYYY` — merges one-off + recurring for that year. Each entry includes `is_recurring: bool`. Without `?year=` returns only one-off entries |
+| POST | /holidays | [A] | Add one-off holiday. Body: `{ date, name }` (date = YYYY-MM-DD) |
+| DELETE | /holidays/:id | [A] | Remove — works for both one-off and recurring entries |
+| GET | /holidays/recurring | [A] | List all recurring holidays. Returns `{ id, month, day, name, created_at }` |
+| POST | /holidays/recurring | [A] | Add recurring holiday. Body: `{ month, day, name }` (month 1–12, day 1–31) |
 
 ---
 

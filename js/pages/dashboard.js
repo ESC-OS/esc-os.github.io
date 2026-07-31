@@ -1,7 +1,7 @@
 import { requireAuth } from '../auth.js';
 import {
   getRequests, getProjects, getNotifications, getVisits,
-  getDeposits, getStorageAreas, getDonations,
+  getDeposits, getStorageAreas, getDonations, getHolidays,
 } from '../api.js';
 import { h, formatDate, renderNavbar, statusBadge } from '../ui.js';
 import { openProjectModal, openRequestModal } from '../forms.js';
@@ -39,23 +39,23 @@ function buildEventMap(requests, visits, deposits, storages, donations) {
     (map[key] ??= []).push(ev);
   }
   requests.filter(r => r.status === 'ready_for_pickup').forEach(r =>
-    add(r.requested_pickup_datetime, { label: 'รับอุปกรณ์', color: 'red',   href: `request-detail.html?id=${r.id}`, name: r.name || '#' + String(r.id).slice(0,8) }));
+    add(r.requested_pickup_datetime, { label: 'รับอุปกรณ์', color: 'red',   href: `request-detail.html?id=${r.id}`, name: r.name || '#' + r.id }));
   requests.filter(r => r.status === 'in_lend').forEach(r =>
-    add(r.requested_return_datetime, { label: 'กำหนดคืน', color: r.is_overdue ? 'red' : 'amber', href: `request-detail.html?id=${r.id}`, name: r.name || '#' + String(r.id).slice(0,8) }));
+    add(r.requested_return_datetime, { label: 'กำหนดคืน', color: r.is_overdue ? 'red' : 'amber', href: `request-detail.html?id=${r.id}`, name: r.name || '#' + r.id }));
   visits.filter(v => v.status === 'confirmed').forEach(v =>
-    add(v.visit_date,   { label: 'เยี่ยมชม',  color: 'blue',  href: `visit-detail.html?id=${v.id}`,    name: v.project_name || '#' + String(v.id).slice(0,8) }));
+    add(v.visit_date,   { label: 'เยี่ยมชม',  color: 'blue',  href: `visit-detail.html?id=${v.id}`,    name: v.project_name || '#' + v.id }));
   deposits.filter(d => d.status === 'approved').forEach(d =>
-    add(d.deposit_date, { label: 'นำฝาก',     color: 'green', href: `deposit-detail.html?id=${d.id}`,  name: d.project_name || '#' + String(d.id).slice(0,8) }));
+    add(d.deposit_date, { label: 'นำฝาก',     color: 'green', href: `deposit-detail.html?id=${d.id}`,  name: d.project_name || '#' + d.id }));
   deposits.filter(d => d.status === 'deposited').forEach(d =>
-    add(d.withdraw_date,{ label: 'รับคืน',    color: 'amber', href: `deposit-detail.html?id=${d.id}`,  name: d.project_name || '#' + String(d.id).slice(0,8) }));
+    add(d.withdraw_date,{ label: 'รับคืน',    color: 'amber', href: `deposit-detail.html?id=${d.id}`,  name: d.project_name || '#' + d.id }));
   storages.filter(s => s.status === 'in_use').forEach(s =>
-    add(s.end_date,     { label: 'คืนพื้นที่', color: 'amber', href: `storage-area-detail.html?id=${s.id}`, name: s.project_name || '#' + String(s.id).slice(0,8) }));
+    add(s.end_date,     { label: 'คืนพื้นที่', color: 'amber', href: `storage-area-detail.html?id=${s.id}`, name: s.project_name || '#' + s.id }));
   donations.filter(d => d.status === 'approved').forEach(d =>
-    add(d.donation_date,{ label: 'มอบของ',    color: 'green', href: `donation-detail.html?id=${d.id}`, name: d.project_name || '#' + String(d.id).slice(0,8) }));
+    add(d.donation_date,{ label: 'มอบของ',    color: 'green', href: `donation-detail.html?id=${d.id}`, name: d.project_name || '#' + d.id }));
   return map;
 }
 
-function _calCells(eventMap, year, month) {
+function _calCells(eventMap, year, month, holidayMap = {}) {
   const now = new Date();
   const todayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   const firstDow    = new Date(year, month, 1).getDay();
@@ -79,16 +79,20 @@ function _calCells(eventMap, year, month) {
 
   return cells.map(cell => {
     const evs = eventMap[cell.key] || [];
-    const uniqColors = [...new Set(evs.map(e => e.color))].slice(0, 3);
+    const isHoliday = !cell.other && !!holidayMap[cell.key];
+    const eventColors = [...new Set(evs.map(e => e.color))];
+    const dotColors = isHoliday
+      ? ['red', ...eventColors.filter(c => c !== 'red')].slice(0, 3)
+      : eventColors.slice(0, 3);
     const cls = ['dash-cal-day', cell.other ? 'other-month' : '', cell.key === todayKey ? 'today' : ''].filter(Boolean).join(' ');
     return `<div class="${cls}" data-date="${cell.key}">
       <span class="dash-cal-day-num">${cell.day}</span>
-      ${uniqColors.length ? `<div class="dash-cal-dots">${uniqColors.map(c => `<span class="dash-cal-dot dash-cal-dot-${c}"></span>`).join('')}</div>` : ''}
+      ${dotColors.length ? `<div class="dash-cal-dots">${dotColors.map(c => `<span class="dash-cal-dot dash-cal-dot-${c}"></span>`).join('')}</div>` : ''}
     </div>`;
   }).join('');
 }
 
-function initCalendar(eventMap) {
+function initCalendar(eventMap, holidayMap = {}) {
   const now = new Date();
   let calYear = now.getFullYear(), calMonth = now.getMonth(), selDate = null;
 
@@ -105,7 +109,7 @@ function initCalendar(eventMap) {
         </div>
         <div class="dash-cal-grid">
           ${_CAL_DOW.map(d => `<div class="dash-cal-dow">${d}</div>`).join('')}
-          ${_calCells(eventMap, calYear, calMonth)}
+          ${_calCells(eventMap, calYear, calMonth, holidayMap)}
         </div>
         <div id="cal-events-panel"></div>
       </div>`;
@@ -129,13 +133,15 @@ function initCalendar(eventMap) {
       selDate = date;
       cell.classList.add('selected');
       const evs = eventMap[date] || [];
-      if (!evs.length) {
+      const holiday = holidayMap[date];
+      if (!evs.length && !holiday) {
         panel.innerHTML = `<div class="dash-cal-events"><div class="dash-cal-events-title">ไม่มีกำหนดการ</div></div>`;
         return;
       }
       const fmt = new Date(date + 'T00:00:00').toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short' });
       panel.innerHTML = `<div class="dash-cal-events">
         <div class="dash-cal-events-title">${fmt}</div>
+        ${holiday ? `<div style="color:var(--error,#dc2626);font-size:.83em;font-weight:600;padding:.15rem 0 .35rem">วันหยุดราชการ — ${h(holiday)}</div>` : ''}
         ${evs.map(ev => `
           <a href="${h(ev.href)}" class="dash-cal-event">
             <span class="dash-cal-event-dot" style="background:${_DOT_COLORS[ev.color] ?? 'var(--text-muted)'}"></span>
@@ -156,7 +162,8 @@ async function init() {
   const app = document.getElementById('app');
   app.innerHTML = '<div class="spinner">กำลังโหลด…</div>';
 
-  const [reqRes, projRes, notifRes, visitRes, depRes, storRes, donRes] = await Promise.all([
+  const _hdYear = new Date().getFullYear();
+  const [reqRes, projRes, notifRes, visitRes, depRes, storRes, donRes, hdRes, hdRes2] = await Promise.all([
     getRequests({ limit: 5 }).catch(() => null),
     getProjects({ limit: 20 }).catch(() => null),
     getNotifications(1, 4).catch(() => null),
@@ -164,6 +171,8 @@ async function init() {
     getDeposits({ limit: 5 }).catch(() => null),
     getStorageAreas({ limit: 5 }).catch(() => null),
     getDonations({ limit: 5 }).catch(() => null),
+    getHolidays(_hdYear).catch(() => ({ data: [] })),
+    getHolidays(_hdYear + 1).catch(() => ({ data: [] })),
   ]);
 
   const requests  = reqRes?.data  ?? [];
@@ -172,7 +181,12 @@ async function init() {
   const visits    = visitRes?.data  ?? [];
   const deposits  = depRes?.data   ?? [];
   const storages  = storRes?.data  ?? [];
-  const donations = donRes?.data       ?? [];
+  const donations = donRes?.data   ?? [];
+
+  const holidayMap = {};
+  [...(hdRes?.data ?? []), ...(hdRes2?.data ?? [])].forEach(hd => {
+    if (hd.date) holidayMap[hd.date] = hd.name;
+  });
 
   renderNavbar(user, unread);
 
@@ -184,47 +198,47 @@ async function init() {
   const actionItems = [];
   requests.filter(r => r.status === 'ready_for_pickup').forEach(r => {
     actionItems.push({ priority: 1, color: 'red', label: 'ไปรับอุปกรณ์',
-      name: r.name || `#${String(r.id).slice(0,8)}`, date: r.requested_pickup_datetime,
+      name: r.name || `#${r.id}`, date: r.requested_pickup_datetime,
       href: `request-detail.html?id=${r.id}` });
   });
   requests.filter(r => r.status === 'in_lend' && r.is_overdue).forEach(r => {
     actionItems.push({ priority: 2, color: 'red', label: 'เกินกำหนดคืน',
-      name: r.name || `#${String(r.id).slice(0,8)}`, date: r.requested_return_datetime,
+      name: r.name || `#${r.id}`, date: r.requested_return_datetime,
       href: `request-detail.html?id=${r.id}` });
   });
   deposits.filter(d => d.status === 'approved').forEach(d => {
     actionItems.push({ priority: 3, color: 'amber', label: 'นำของมาฝาก',
-      name: d.project_name || `#${String(d.id).slice(0,8)}`, date: d.deposit_date,
+      name: d.project_name || `#${d.id}`, date: d.deposit_date,
       href: `deposit-detail.html?id=${d.id}` });
   });
   donations.filter(d => d.status === 'approved').forEach(d => {
     actionItems.push({ priority: 3, color: 'amber', label: 'นำของมามอบ',
-      name: d.project_name || `#${String(d.id).slice(0,8)}`, date: d.donation_date,
+      name: d.project_name || `#${d.id}`, date: d.donation_date,
       href: `donation-detail.html?id=${d.id}` });
   });
   deposits.filter(d => d.status === 'deposited').forEach(d => {
     actionItems.push({ priority: 4, color: 'amber', label: 'มารับของคืน',
-      name: d.project_name || `#${String(d.id).slice(0,8)}`, date: d.withdraw_date,
+      name: d.project_name || `#${d.id}`, date: d.withdraw_date,
       href: `deposit-detail.html?id=${d.id}` });
   });
   storages.filter(s => s.status === 'in_use').forEach(s => {
     actionItems.push({ priority: 4, color: 'amber', label: 'เตรียมคืนพื้นที่',
-      name: s.project_name || `#${String(s.id).slice(0,8)}`, date: s.end_date,
+      name: s.project_name || `#${s.id}`, date: s.end_date,
       href: `storage-area-detail.html?id=${s.id}` });
   });
   visits.filter(v => v.status === 'confirmed').forEach(v => {
     actionItems.push({ priority: 5, color: 'blue', label: 'เตรียมเยี่ยมชม',
-      name: v.project_name || `#${String(v.id).slice(0,8)}`, date: v.visit_date,
+      name: v.project_name || `#${v.id}`, date: v.visit_date,
       href: `visit-detail.html?id=${v.id}` });
   });
   requests.filter(r => r.status === 'pending').forEach(r => {
     actionItems.push({ priority: 6, color: 'blue', label: 'รอเจ้าหน้าที่',
-      name: r.name || `#${String(r.id).slice(0,8)}`, date: null,
+      name: r.name || `#${r.id}`, date: null,
       href: `request-detail.html?id=${r.id}` });
   });
   requests.filter(r => r.status === 'processing').forEach(r => {
     actionItems.push({ priority: 6, color: 'blue', label: 'กำลังเตรียม',
-      name: r.name || `#${String(r.id).slice(0,8)}`, date: null,
+      name: r.name || `#${r.id}`, date: null,
       href: `request-detail.html?id=${r.id}` });
   });
   actionItems.sort((a, b) => a.priority - b.priority);
@@ -248,31 +262,31 @@ async function init() {
   const TL = 7;
   requests.filter(r => r.status === 'ready_for_pickup' && withinDays(r.requested_pickup_datetime, TL)).forEach(r => {
     timelineItems.push({ date: new Date(r.requested_pickup_datetime), color: 'green',
-      label: 'รับอุปกรณ์', name: r.name || `#${String(r.id).slice(0,8)}`, href: `request-detail.html?id=${r.id}` });
+      label: 'รับอุปกรณ์', name: r.name || `#${r.id}`, href: `request-detail.html?id=${r.id}` });
   });
   requests.filter(r => r.status === 'in_lend' && withinDays(r.requested_return_datetime, TL)).forEach(r => {
     timelineItems.push({ date: new Date(r.requested_return_datetime), color: 'amber',
-      label: 'กำหนดคืน', name: r.name || `#${String(r.id).slice(0,8)}`, href: `request-detail.html?id=${r.id}` });
+      label: 'กำหนดคืน', name: r.name || `#${r.id}`, href: `request-detail.html?id=${r.id}` });
   });
   visits.filter(v => v.status === 'confirmed' && withinDays(v.visit_date, TL)).forEach(v => {
     timelineItems.push({ date: new Date(v.visit_date), color: 'blue',
-      label: 'เยี่ยมชม', name: v.project_name || `#${String(v.id).slice(0,8)}`, href: `visit-detail.html?id=${v.id}` });
+      label: 'เยี่ยมชม', name: v.project_name || `#${v.id}`, href: `visit-detail.html?id=${v.id}` });
   });
   deposits.filter(d => d.status === 'approved' && withinDays(d.deposit_date, TL)).forEach(d => {
     timelineItems.push({ date: new Date(d.deposit_date), color: 'green',
-      label: 'นำของฝาก', name: d.project_name || `#${String(d.id).slice(0,8)}`, href: `deposit-detail.html?id=${d.id}` });
+      label: 'นำของฝาก', name: d.project_name || `#${d.id}`, href: `deposit-detail.html?id=${d.id}` });
   });
   deposits.filter(d => d.status === 'deposited' && withinDays(d.withdraw_date, TL)).forEach(d => {
     timelineItems.push({ date: new Date(d.withdraw_date), color: 'amber',
-      label: 'รับของคืน', name: d.project_name || `#${String(d.id).slice(0,8)}`, href: `deposit-detail.html?id=${d.id}` });
+      label: 'รับของคืน', name: d.project_name || `#${d.id}`, href: `deposit-detail.html?id=${d.id}` });
   });
   storages.filter(s => s.status === 'in_use' && withinDays(s.end_date, TL)).forEach(s => {
     timelineItems.push({ date: new Date(s.end_date), color: 'amber',
-      label: 'คืนพื้นที่', name: s.project_name || `#${String(s.id).slice(0,8)}`, href: `storage-area-detail.html?id=${s.id}` });
+      label: 'คืนพื้นที่', name: s.project_name || `#${s.id}`, href: `storage-area-detail.html?id=${s.id}` });
   });
   donations.filter(d => d.status === 'approved' && withinDays(d.donation_date, TL)).forEach(d => {
     timelineItems.push({ date: new Date(d.donation_date), color: 'green',
-      label: 'นำของมอบ', name: d.project_name || `#${String(d.id).slice(0,8)}`, href: `donation-detail.html?id=${d.id}` });
+      label: 'นำของมอบ', name: d.project_name || `#${d.id}`, href: `donation-detail.html?id=${d.id}` });
   });
   timelineItems.sort((a, b) => a.date - b.date);
 
@@ -358,7 +372,7 @@ async function init() {
       ${activeReqs.slice(0, 6).map(r => `
         <a href="request-detail.html?id=${h(r.id)}" class="dash-req-row">
           ${statusBadge(r.status)}
-          <span class="dash-req-name">${h(r.name || '#' + String(r.id).slice(0, 8))}</span>
+          <span class="dash-req-name">${h(r.name || '#' + r.id)}</span>
           <span class="dash-req-date">${r.requested_return_datetime ? formatDate(r.requested_return_datetime) : ''}</span>
           <span class="dash-req-arrow">→</span>
         </a>`).join('')}
@@ -422,7 +436,7 @@ async function init() {
     </div>`;
 
   // ── Calendar ──────────────────────────────────────────────────────────────
-  initCalendar(eventMap);
+  initCalendar(eventMap, holidayMap);
 
   // ── CTA button handler ────────────────────────────────────────────────────
   document.getElementById('btn-dash-cta')?.addEventListener('click', () => {

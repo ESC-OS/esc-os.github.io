@@ -11,7 +11,7 @@ import {
   photoUrl,
   getNotifications,
 } from '../api.js';
-import { h, statusBadge, formatDate, renderNavbar, showError, openModal } from '../ui.js';
+import { h, statusBadge, formatDate, renderNavbar, showError, openModal, showConfirmModal } from '../ui.js';
 
 async function init() {
   const user = await requireAuth();
@@ -140,7 +140,7 @@ async function init() {
 
       <div class="req-header">
         <div class="req-title-row">
-          <h1 class="page-title" style="margin:0">#${h(id.slice(0, 8))}</h1>
+          <h1 class="page-title" style="margin:0">#${h(id)}</h1>
           ${statusBadge(status)}
         </div>
         <div class="page-title" style="font-size:1.1rem;font-weight:500;color:var(--text-muted)">
@@ -186,12 +186,13 @@ async function init() {
     }
 
     // ── Submit donation request ───────────────────────────────────────────────
-    document.getElementById('btn-submit')?.addEventListener('click', async () => {
-      if (!confirm('ยืนยันการส่งคำขอบริจาค?')) return;
-      try {
-        await submitDonation(id);
-        await renderPage();
-      } catch (err) { errBox(err.message); }
+    document.getElementById('btn-submit')?.addEventListener('click', () => {
+      showConfirmModal('ยืนยันการส่งคำขอบริจาค?', async () => {
+        try {
+          await submitDonation(id);
+          await renderPage();
+        } catch (err) { errBox(err.message); }
+      }, { confirmLabel: 'ส่งคำขอ' });
     });
 
     // ── Per-item approve ──────────────────────────────────────────────────────
@@ -210,24 +211,26 @@ async function init() {
 
     // ── Per-item reject ───────────────────────────────────────────────────────
     document.querySelectorAll('[data-reject]').forEach(btn => {
-      btn.addEventListener('click', async () => {
+      btn.addEventListener('click', () => {
         const itemId = btn.dataset.reject;
-        if (!confirm('ยืนยันการปฏิเสธรายการนี้?')) return;
-        btn.disabled = true;
-        try {
-          await reviewDonationItem(id, itemId, { action: 'reject' });
-          await renderPage();
-        } catch (err) { errBox(err.message); btn.disabled = false; }
+        showConfirmModal('ยืนยันการปฏิเสธรายการนี้?', async () => {
+          btn.disabled = true;
+          try {
+            await reviewDonationItem(id, itemId, { action: 'reject' });
+            await renderPage();
+          } catch (err) { errBox(err.message); btn.disabled = false; }
+        }, { title: 'ปฏิเสธรายการ', confirmLabel: 'ปฏิเสธ', confirmClass: 'btn-danger' });
       });
     });
 
     // ── Approve donation (admin) ──────────────────────────────────────────────
-    document.getElementById('btn-approve-donation')?.addEventListener('click', async () => {
-      if (!confirm('ยืนยันการอนุมัติการบริจาค?')) return;
-      try {
-        await approveDonation(id, {});
-        await renderPage();
-      } catch (err) { errBox(err.message); }
+    document.getElementById('btn-approve-donation')?.addEventListener('click', () => {
+      showConfirmModal('ยืนยันการอนุมัติการบริจาค?', async () => {
+        try {
+          await approveDonation(id, {});
+          await renderPage();
+        } catch (err) { errBox(err.message); }
+      }, { confirmLabel: 'อนุมัติ' });
     });
 
     // ── Reject donation (admin, with note modal) ──────────────────────────────
@@ -316,12 +319,13 @@ async function init() {
     });
 
     // ── Complete (admin, donated) ─────────────────────────────────────────────
-    document.getElementById('btn-complete')?.addEventListener('click', async () => {
-      if (!confirm('ยืนยันการรับบริจาคและทำเครื่องหมายเสร็จสิ้น?')) return;
-      try {
-        await completeDonation(id);
-        await renderPage();
-      } catch (err) { errBox(err.message); }
+    document.getElementById('btn-complete')?.addEventListener('click', () => {
+      showConfirmModal('ยืนยันการรับบริจาคและทำเครื่องหมายเสร็จสิ้น?', async () => {
+        try {
+          await completeDonation(id);
+          await renderPage();
+        } catch (err) { errBox(err.message); }
+      }, { confirmLabel: 'ยืนยันรับบริจาค' });
     });
   }
 

@@ -38,7 +38,7 @@ async function init() {
     return `<div class="svc-list">
       ${requests.map(r => `
         <a href="request-detail.html?id=${h(r.id)}" class="svc-row">
-          <span class="svc-row-id">#${h(r.id.slice(0, 8))}</span>
+          <span class="svc-row-id">#${h(r.id)}</span>
           <span class="svc-row-name">${h(r.name || '-')}</span>
           ${adminView && r.user_name ? `<span class="svc-row-meta" style="color:var(--text-muted)">${h(r.user_name)}</span>` : ''}
           <span>${statusBadge(r.status)}${r.is_overdue ? ' <span class="badge badge-overdue">เกินกำหนด</span>' : ''}</span>

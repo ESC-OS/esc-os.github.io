@@ -19,7 +19,7 @@ function renderList(list) {
   return `<div class="svc-list">
     ${list.map(d => `
     <a href="donation-detail.html?id=${h(d.id)}" class="svc-row">
-      <span class="svc-row-id">#${h(d.id.slice(0, 8))}</span>
+      <span class="svc-row-id">#${h(d.id)}</span>
       <span class="svc-row-name">${h(d.project_name || d.project_id || '-')}</span>
       <span class="svc-row-meta">${d.item_count ?? 0} รายการ · ${formatDate(d.donation_date)}</span>
       ${statusBadge(d.status)}

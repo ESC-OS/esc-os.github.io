@@ -22,7 +22,7 @@ function renderList(list) {
       const itemCount = d.item_count ?? d.items?.length ?? 0;
       return `
       <a href="deposit-detail.html?id=${h(d.id)}" class="svc-row">
-        <span class="svc-row-id">#${h(d.id.slice(0, 8))}</span>
+        <span class="svc-row-id">#${h(d.id)}</span>
         <span class="svc-row-name">${h(d.project_name || d.project_id || '-')}</span>
         <span class="svc-row-meta">${itemCount} รายการ · ฝาก ${formatDate(d.deposit_date)}</span>
         ${statusBadge(d.status)}
