@@ -8,6 +8,13 @@
 <body>
 <script>
   (function () {
+    // Restore path saved by 404.html (GitHub Pages SPA routing)
+    var _r = sessionStorage.getItem('_spa_redirect');
+    if (_r) {
+      sessionStorage.removeItem('_spa_redirect');
+      window.history.replaceState(null, null, _r);
+    }
+
     var path = window.location.pathname;
 
     if (/\/auth\/callback\/?$/.test(path)) {
