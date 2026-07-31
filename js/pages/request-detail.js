@@ -658,6 +658,21 @@ async function init() {
 
     // ── Draft handlers: dropdown calendars + time picker + submit ───────────
     if (isOwner && status === 'draft') {
+      let pickedDate       = request.requested_pickup_datetime?.slice(0, 10) ?? '';
+      let pickedReturn     = request.requested_return_datetime?.slice(0, 10)  ?? '';
+      let pickedTime       = '';
+      let pickedReturnTime = '';
+      const availSet          = new Set(uniquePickupDates);
+      const returnAvailSet    = new Set(uniqueReturnDates);
+      const pickupDrop        = document.getElementById('pickup-cal-drop');
+      const returnDrop        = document.getElementById('return-cal-drop');
+      const pickupBtn         = document.getElementById('btn-pick-date');
+      const returnBtn         = document.getElementById('btn-pick-return');
+      const timeBtnsDiv       = document.getElementById('time-btns');
+      const returnTimeBtnsDiv = document.getElementById('return-time-btns');
+      const timeGroup         = document.getElementById('time-group');
+      const returnTimeGroup   = document.getElementById('return-time-group');
+
       function closeAll() {
         if (pickupDrop) pickupDrop.style.display = 'none';
         if (returnDrop) returnDrop.style.display = 'none';
