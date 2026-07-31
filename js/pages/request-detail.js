@@ -713,16 +713,16 @@ async function init() {
             closeAll();
             pickedTime = '';
             renderTimeBtns(new Date(pickedDate + 'T00:00:00').getDay());
-            if (timeGroup) timeGroup.style.display = '';
+            if (timeGroup) timeGroup.style.display = 'block';
           });
         });
       }
 
       pickupBtn?.addEventListener('click', e => {
         e.stopPropagation();
-        const wasOpen = pickupDrop?.style.display !== 'none';
+        const wasOpen = pickupDrop && pickupDrop.style.display !== 'none';
         closeAll();
-        if (!wasOpen && pickupDrop) { mountPickupCal(); pickupDrop.style.display = ''; }
+        if (!wasOpen && pickupDrop) { mountPickupCal(); pickupDrop.style.display = 'block'; }
       });
 
       // ── Return calendar ───────────────────────────────────────────────────
@@ -758,16 +758,16 @@ async function init() {
             closeAll();
             pickedReturnTime = '';
             renderReturnTimeBtns(new Date(pickedReturn + 'T00:00:00').getDay());
-            if (returnTimeGroup) returnTimeGroup.style.display = '';
+            if (returnTimeGroup) returnTimeGroup.style.display = 'block';
           });
         });
       }
 
       returnBtn?.addEventListener('click', e => {
         e.stopPropagation();
-        const wasOpen = returnDrop?.style.display !== 'none';
+        const wasOpen = returnDrop && returnDrop.style.display !== 'none';
         closeAll();
-        if (!wasOpen && returnDrop) { mountReturnCal(); returnDrop.style.display = ''; }
+        if (!wasOpen && returnDrop) { mountReturnCal(); returnDrop.style.display = 'block'; }
       });
 
       // ── Time buttons ──────────────────────────────────────────────────────
@@ -793,7 +793,7 @@ async function init() {
             b.style.cssText = `padding:.45rem 1.4rem;border-radius:999px;border:1.5px solid;font-size:.95em;cursor:pointer;transition:all .15s;${onStyle}`;
           });
         });
-        if (timeGroup) timeGroup.style.display = '';
+        if (timeGroup) timeGroup.style.display = 'block';
       }
 
       // ── Return time buttons ───────────────────────────────────────────────
@@ -819,7 +819,7 @@ async function init() {
             b.style.cssText = `padding:.45rem 1.4rem;border-radius:999px;border:1.5px solid;font-size:.95em;cursor:pointer;transition:all .15s;${onStyle}`;
           });
         });
-        if (returnTimeGroup) returnTimeGroup.style.display = '';
+        if (returnTimeGroup) returnTimeGroup.style.display = 'block';
       }
 
       // Restore pre-selected state on page load
