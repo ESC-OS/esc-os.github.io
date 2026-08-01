@@ -1,43 +1,16 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="th">
-<head>
-  <meta charset="UTF-8">
-  <title>Operation Support</title>
-  <link rel="icon" type="image/png" href="public/ESC_logo.png">
-</head>
-<body>
-<script>
-  (function () {
-    // Restore path saved by 404.html (GitHub Pages SPA routing)
-    var _r = sessionStorage.getItem('_spa_redirect');
-    if (_r) {
-      sessionStorage.removeItem('_spa_redirect');
-      window.history.replaceState(null, null, _r);
-    }
-
-    var path = window.location.pathname;
-
-    if (/\/auth\/callback\/?$/.test(path)) {
-      var params = new URLSearchParams(window.location.search);
-      var token  = params.get('token');
-      var error  = params.get('error');
-
-      // Strip "/auth/callback" to find the app root (works in subdirectories too)
-      var root = path.replace(/\/?auth\/callback\/?$/, '');
-      root = root ? root + '/' : '/';
-
-      if (token) {
-        localStorage.setItem('token', token);
-        window.location.replace(root + 'dashboard.html');
-      } else {
-        // login.js already handles ?error= params with Thai messages
-        window.location.replace(root + 'login.html?error=' + encodeURIComponent(error || 'token_exchange_failed'));
-      }
-    } else {
-      // Root visit — auth.js will redirect to login if not signed in
-      window.location.replace('dashboard.html');
-    }
-  })();
-</script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Operation Support</title>
+    <link rel="icon" type="image/png" href="/ESC_logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>
